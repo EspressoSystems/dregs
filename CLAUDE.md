@@ -30,6 +30,8 @@ A Rust CLI tool that runs mutation testing for Solidity projects using Foundry. 
 
 Use direnv with nix-direnv to automatically load the dev environment.
 
+Use the rust-dev agent for Rust implementation tasks.
+
 ### Commits
 Use semantic commit messages: `type: description`
 - feat: new feature
