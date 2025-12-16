@@ -71,7 +71,7 @@ gambit = { git = "https://github.com/Certora/gambit", tag = "v1.0.6" }
 Use forge crate as library (exposes `MultiContractRunner`, `ContractRunner`):
 ```toml
 [dependencies]
-forge = { git = "https://github.com/foundry-rs/foundry", tag = "v1.5.0" }
+forge = { git = "https://github.com/foundry-rs/foundry", tag = "v1.4.4" }
 ```
 Benefits:
 - Get which specific test killed the mutant
@@ -249,7 +249,7 @@ Future optimization: symlink lib/, node_modules/, copy only src/
 ### Runtime
 - clap (derive): CLI parsing
 - gambit (git v1.0.6): Mutation generation library
-- forge (git v1.5.0): Test runner library
+- forge (git v1.4.4): Test runner library
 - serde + serde_json: Config and report serialization
 - tempfile: Temp directory management
 - thiserror: Typed errors for testable error paths
