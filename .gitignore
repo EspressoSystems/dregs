@@ -21,7 +21,10 @@ target
 #.idea/
 
 .*
+!.gitignore
 
+# Gambit mutation output
+gambit_out/
 
 # Added by cargo
 
