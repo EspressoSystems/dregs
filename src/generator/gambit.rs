@@ -97,15 +97,13 @@ mod tests {
     use std::path::PathBuf;
 
     #[test]
-    fn test_gambit_generator_creation() {
+    fn test_gambit_generator_new() {
         let _generator = GambitGenerator::new();
-        assert!(true);
     }
 
     #[test]
     fn test_gambit_generator_default() {
-        let _generator = GambitGenerator::default();
-        assert!(true);
+        let _generator: GambitGenerator = Default::default();
     }
 
     #[test]

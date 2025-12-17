@@ -25,19 +25,39 @@
           pre-commit-check = git-hooks.lib.${system}.run {
             src = ./.;
             hooks = {
-              rustfmt.enable = true;
-              clippy = {
+              rustfmt = {
                 enable = true;
                 packageOverrides.cargo = rustToolchain;
-                packageOverrides.clippy = rustToolchain;
+                packageOverrides.rustfmt = rustToolchain;
+              };
+              clippy = {
+                enable = true;
+                name = "clippy";
+                entry = "${rustToolchain}/bin/cargo-clippy clippy --all-targets -- -D warnings";
+                types_or = [ "rust" "toml" ];
+                pass_filenames = false;
               };
               cargo-test = {
                 enable = true;
                 name = "cargo nextest";
                 entry = "${pkgs.cargo-nextest}/bin/cargo-nextest nextest run";
-                files = "\\.rs$";
+                types_or = [ "rust" "toml" ];
                 pass_filenames = false;
               };
+              spell-checking = {
+                enable = true;
+                name = "typos";
+                entry = "${pkgs.typos}/bin/typos --force-exclude";
+                pass_filenames = true;
+              };
+              cargo-lock = {
+                enable = true;
+                name = "cargo lock";
+                entry = "${rustToolchain}/bin/cargo update --workspace --verbose";
+                types_or = [ "toml" ];
+                pass_filenames = false;
+              };
+              nixpkgs-fmt.enable = true;
             };
           };
         }
@@ -62,6 +82,8 @@
               pkgs.cargo-nextest
               pkgs.foundry
               pkgs.solc-bin."0.8.30"
+              pkgs.typos
+              pkgs.nixpkgs-fmt
             ];
             RUST_BACKTRACE = 1;
           };

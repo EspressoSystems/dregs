@@ -2,16 +2,20 @@ mod common;
 
 use assert_cmd::Command;
 
+// cargo_bin is deprecated for custom build-dir support we don't use
+#[allow(deprecated)]
+fn mutr_cmd() -> Command {
+    Command::cargo_bin("mutr").unwrap()
+}
+
 #[test]
 fn test_help() {
-    let mut cmd = Command::cargo_bin("mutr").unwrap();
-    cmd.arg("--help").assert().success();
+    mutr_cmd().arg("--help").assert().success();
 }
 
 #[test]
 fn test_run_help() {
-    let mut cmd = Command::cargo_bin("mutr").unwrap();
-    cmd.arg("run").arg("--help").assert().success();
+    mutr_cmd().arg("run").arg("--help").assert().success();
 }
 
 #[test]
