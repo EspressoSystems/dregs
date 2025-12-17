@@ -14,15 +14,22 @@ A Rust CLI tool that runs mutation testing for Solidity projects using Foundry. 
 - [x] Report mutation score + surviving mutants + which test killed
 - [x] Wire up CLI to run full mutation testing flow
 
-### v0.2 - Parallel Execution
+### v0.2 - Nix Package with Crane
+- [ ] Add crane input to flake.nix
+- [ ] Build mutr with craneLib.buildPackage
+- [ ] Wrap binary to include forge in PATH
+- [ ] Export packages.default and apps.default
+- [ ] Usage: `nix run github:sveitser/mutr -- run --project .`
+
+### v0.3 - Parallel Execution
 - [ ] Run multiple mutants concurrently
 - [ ] Configurable worker count
 
-### v0.3 - Incremental Testing
+### v0.4 - Incremental Testing
 - [ ] Cache test results by mutant hash
 - [ ] Only re-test changed mutants
 
-### v0.4 - Coverage Filtering
+### v0.5 - Coverage Filtering
 - [ ] Parse forge coverage output
 - [ ] Only mutate lines covered by tests
 
@@ -44,10 +51,50 @@ Use semantic commit messages: `type: description`
 ### Nix Flake Inputs
 ```nix
 inputs.nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
+inputs.crane.url = "github:ipetkov/crane";
 inputs.rust-overlay.url = "github:oxalica/rust-overlay";
 inputs.git-hooks.url = "github:cachix/git-hooks.nix";
 inputs.solc.url = "github:EspressoSystems/nix-solc-bin";
 ```
+
+### Crane Build Plan (v0.2)
+Build with crane and wrap binary to include runtime dependencies:
+
+```nix
+# In flake outputs:
+let
+  craneLib = crane.mkLib pkgs;
+  src = craneLib.cleanCargoSource ./.;
+
+  commonArgs = {
+    inherit src;
+    strictDeps = true;
+  };
+
+  cargoArtifacts = craneLib.buildDepsOnly commonArgs;
+
+  mutr-unwrapped = craneLib.buildPackage (commonArgs // {
+    inherit cargoArtifacts;
+  });
+
+  # Wrap to include forge in PATH (solc is managed by forge per project)
+  mutr = pkgs.runCommand "mutr" {
+    nativeBuildInputs = [ pkgs.makeWrapper ];
+  } ''
+    mkdir -p $out/bin
+    makeWrapper ${mutr-unwrapped}/bin/mutr $out/bin/mutr \
+      --prefix PATH : ${pkgs.lib.makeBinPath [ pkgs.foundry ]}
+  '';
+in {
+  packages.default = mutr;
+  apps.default = { type = "app"; program = "${mutr}/bin/mutr"; };
+}
+```
+
+Key points:
+- Use `craneLib.buildDepsOnly` for cacheable dependency builds
+- Wrap binary with `makeWrapper` to inject forge into PATH
+- User runs: `nix run github:sveitser/mutr -- run --project /path/to/project`
 
 ### Pre-commit Hooks (via git-hooks.nix)
 - rustfmt
