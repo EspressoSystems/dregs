@@ -1,4 +1,4 @@
-use super::{GeneratorConfig, GeneratorError, Mutant, MutationGenerator, Result};
+use super::{GeneratorConfig, Mutant, MutationGenerator, Result};
 use gambit::{MutateParams, run_mutate};
 
 pub struct GambitGenerator;
@@ -34,7 +34,7 @@ impl MutationGenerator for GambitGenerator {
                     Some(config.operators.clone())
                 },
                 no_export: false,
-                no_overwrite: true,
+                no_overwrite: false,
                 solc: "solc".to_string(),
                 solc_optimize: false,
                 solc_evm_version: None,
@@ -49,8 +49,7 @@ impl MutationGenerator for GambitGenerator {
             mutate_params_list.push(params);
         }
 
-        let gambit_results = run_mutate(mutate_params_list)
-            .map_err(|e| GeneratorError::Generation(format!("gambit run_mutate failed: {}", e)))?;
+        let gambit_results = run_mutate(mutate_params_list).expect("gambit run_mutate failed");
 
         let mut mutants = Vec::new();
         let mut mutant_id = 1u32;
@@ -59,13 +58,13 @@ impl MutationGenerator for GambitGenerator {
             for gambit_mutant in gambit_mutants {
                 let source = &gambit_mutant.source;
                 let source_path = source.filename();
-                let relative_path = source.relative_filename().map_err(|e| {
-                    GeneratorError::Generation(format!("failed to get relative filename: {}", e))
-                })?;
+                let relative_path = source
+                    .relative_filename()
+                    .expect("gambit returned invalid source without relative filename");
 
-                let (line, _col) = source.get_line_column(gambit_mutant.start).map_err(|e| {
-                    GeneratorError::Generation(format!("failed to get line number: {}", e))
-                })?;
+                let (line, _col) = source
+                    .get_line_column(gambit_mutant.start)
+                    .expect("gambit returned invalid mutant position");
 
                 let mutant_path = config
                     .output_dir
@@ -118,5 +117,54 @@ mod tests {
         let result = generator.generate(&config);
         assert!(result.is_ok());
         assert_eq!(result.unwrap().len(), 0);
+    }
+
+    #[test]
+    fn test_generate_with_solidity_file() {
+        use tempfile::TempDir;
+
+        let generator = GambitGenerator::new();
+        let project_root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/simple");
+        let temp_dir = TempDir::new().unwrap();
+        let output_dir = temp_dir.path().join("gambit_out");
+
+        let config = GeneratorConfig {
+            project_root: project_root.clone(),
+            files: vec![project_root.join("src/Counter.sol")],
+            operators: vec![],
+            output_dir,
+        };
+
+        let result = generator.generate(&config);
+        assert!(result.is_ok());
+
+        let mutants = result.unwrap();
+        assert!(!mutants.is_empty());
+
+        let first_mutant = &mutants[0];
+        assert_eq!(first_mutant.id, 1);
+        assert!(first_mutant.source_path.exists());
+        assert!(!first_mutant.operator.is_empty());
+        assert!(first_mutant.line > 0);
+    }
+
+    #[test]
+    fn test_generate_with_specific_operators() {
+        use tempfile::TempDir;
+
+        let generator = GambitGenerator::new();
+        let project_root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/simple");
+        let temp_dir = TempDir::new().unwrap();
+        let output_dir = temp_dir.path().join("gambit_out");
+
+        let config = GeneratorConfig {
+            project_root: project_root.clone(),
+            files: vec![project_root.join("src/Counter.sol")],
+            operators: vec!["binary-op-mutation".to_string()],
+            output_dir,
+        };
+
+        let result = generator.generate(&config);
+        assert!(result.is_ok());
     }
 }

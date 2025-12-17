@@ -106,14 +106,10 @@ fn apply_mutant_to_project(
     let target_path = temp_project.join(relative_source_path);
 
     if let Some(parent) = target_path.parent() {
-        fs::create_dir_all(parent).map_err(|e| {
-            RunnerError::MutantApplication(format!("failed to create parent directories: {}", e))
-        })?;
+        fs::create_dir_all(parent).expect("failed to create parent directories");
     }
 
-    fs::write(&target_path, mutant_content).map_err(|e| {
-        RunnerError::MutantApplication(format!("failed to write mutant to target: {}", e))
-    })?;
+    fs::write(&target_path, mutant_content).expect("failed to write mutant to target");
 
     Ok(())
 }
@@ -149,27 +145,27 @@ fn parse_failed_test_from_output(stdout: &str, stderr: &str) -> Option<String> {
             return Some(test_name);
         }
 
-        if let Ok(json) = serde_json::from_str::<serde_json::Value>(line)
-            && let Some(test_results) = json.get("test_results")
-            && let Some(obj) = test_results.as_object()
-        {
-            for (contract_path, contract_tests) in obj {
-                if let Some(tests) = contract_tests.get("test_results")
-                    && let Some(tests_obj) = tests.as_object()
-                {
-                    for (test_name, test_result) in tests_obj {
-                        if let Some(status) = test_result.get("status")
-                            && status.as_str() == Some("Failure")
-                        {
-                            let contract_name = extract_contract_name_from_path(contract_path);
-                            return Some(format!("{}::{}", contract_name, test_name));
-                        }
-                    }
-                }
-            }
+        if let Some(result) = parse_json_test_output(line) {
+            return Some(result);
         }
     }
 
+    None
+}
+
+fn parse_json_test_output(line: &str) -> Option<String> {
+    let json = serde_json::from_str::<serde_json::Value>(line).ok()?;
+    let test_results = json.get("test_results")?.as_object()?;
+
+    for (contract_path, contract_tests) in test_results {
+        let tests = contract_tests.get("test_results")?.as_object()?;
+        for (test_name, test_result) in tests {
+            if test_result.get("status")?.as_str() == Some("Failure") {
+                let contract_name = extract_contract_name_from_path(contract_path);
+                return Some(format!("{}::{}", contract_name, test_name));
+            }
+        }
+    }
     None
 }
 
@@ -195,7 +191,7 @@ fn extract_contract_name_from_path(path: &str) -> String {
         .file_name()
         .and_then(|s| s.to_str())
         .map(|s| s.trim_end_matches(".sol").to_string())
-        .unwrap_or_else(|| path.to_string())
+        .expect("invalid contract path")
 }
 
 #[cfg(test)]
@@ -291,5 +287,238 @@ mod tests {
             extract_contract_name_from_path("test/MyTest.t.sol"),
             "MyTest.t"
         );
+    }
+
+    #[test]
+    fn test_parse_failed_test_from_output_failing_tests_line() {
+        let stdout = "Failing tests:\n[FAIL] testSomething() (gas: 100)";
+        let result = parse_failed_test_from_output(stdout, "");
+        assert_eq!(result, Some("testSomething".to_string()));
+    }
+
+    #[test]
+    fn test_parse_failed_test_from_output_no_match() {
+        let stdout = "All tests passed!";
+        let result = parse_failed_test_from_output(stdout, "");
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn test_parse_failed_test_from_output_json_format() {
+        let json_output = r#"{"test_results":{"test/Counter.t.sol:CounterTest":{"test_results":{"testIncrement":{"status":"Failure"}}}}}"#;
+        let result = parse_failed_test_from_output(json_output, "");
+        assert_eq!(result, Some("CounterTest::testIncrement".to_string()));
+    }
+
+    #[test]
+    fn test_parse_json_test_output_no_failures() {
+        let json_output = r#"{"test_results":{"test/Counter.t.sol:CounterTest":{"test_results":{"testIncrement":{"status":"Success"}}}}}"#;
+        let result = parse_json_test_output(json_output);
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn test_parse_failed_test_from_output_from_stderr() {
+        let result = parse_failed_test_from_output("", "[FAIL] testFromStderr() (gas: 50)");
+        assert_eq!(result, Some("testFromStderr".to_string()));
+    }
+
+    #[test]
+    fn test_extract_test_name_no_bracket() {
+        let result = extract_test_name_from_fail_line("no bracket here");
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn test_extract_test_name_no_paren() {
+        let result = extract_test_name_from_fail_line("[FAIL] no_paren");
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn test_extract_test_name_empty_name() {
+        let result = extract_test_name_from_fail_line("[FAIL] ()");
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn test_copy_project_to_temp_error() {
+        let result = copy_project_to_temp(Path::new("/nonexistent/path"), Path::new("/tmp/dest"));
+        pretty_assertions::assert_matches!(result, Err(RunnerError::ProjectCopy(_)));
+    }
+
+    #[test]
+    fn test_apply_mutant_to_project() {
+        use assert_fs::TempDir;
+        use assert_fs::prelude::*;
+
+        let project_dir = TempDir::new().unwrap();
+        project_dir
+            .child("src/Counter.sol")
+            .write_str("original")
+            .unwrap();
+
+        let mutant_dir = TempDir::new().unwrap();
+        mutant_dir.child("mutant.sol").write_str("mutated").unwrap();
+
+        let temp_project = TempDir::new().unwrap();
+        temp_project.child("src").create_dir_all().unwrap();
+        temp_project
+            .child("src/Counter.sol")
+            .write_str("original")
+            .unwrap();
+
+        let mutant = Mutant {
+            id: 1,
+            source_path: project_dir.path().join("src/Counter.sol"),
+            mutant_path: mutant_dir.path().join("mutant.sol"),
+            operator: "test".to_string(),
+            original: "original".to_string(),
+            replacement: "mutated".to_string(),
+            line: 1,
+        };
+
+        let result = apply_mutant_to_project(&mutant, project_dir.path(), temp_project.path());
+        assert!(result.is_ok());
+
+        let content =
+            std::fs::read_to_string(temp_project.child("src/Counter.sol").path()).unwrap();
+        assert_eq!(content, "mutated");
+    }
+
+    #[test]
+    fn test_apply_mutant_to_project_missing_mutant_file() {
+        use assert_fs::TempDir;
+
+        let project_dir = TempDir::new().unwrap();
+        let temp_project = TempDir::new().unwrap();
+
+        let mutant = Mutant {
+            id: 1,
+            source_path: project_dir.path().join("src/Counter.sol"),
+            mutant_path: PathBuf::from("/nonexistent/mutant.sol"),
+            operator: "test".to_string(),
+            original: "original".to_string(),
+            replacement: "mutated".to_string(),
+            line: 1,
+        };
+
+        let result = apply_mutant_to_project(&mutant, project_dir.path(), temp_project.path());
+        pretty_assertions::assert_matches!(result, Err(RunnerError::MutantApplication(_)));
+    }
+
+    #[test]
+    fn test_apply_mutant_creates_parent_dirs() {
+        use assert_fs::TempDir;
+        use assert_fs::prelude::*;
+
+        let project_dir = TempDir::new().unwrap();
+        let mutant_dir = TempDir::new().unwrap();
+        mutant_dir.child("mutant.sol").write_str("mutated").unwrap();
+        let temp_project = TempDir::new().unwrap();
+
+        let mutant = Mutant {
+            id: 1,
+            source_path: project_dir.path().join("deep/nested/Contract.sol"),
+            mutant_path: mutant_dir.path().join("mutant.sol"),
+            operator: "test".to_string(),
+            original: "original".to_string(),
+            replacement: "mutated".to_string(),
+            line: 1,
+        };
+
+        let result = apply_mutant_to_project(&mutant, project_dir.path(), temp_project.path());
+        assert!(result.is_ok());
+        assert!(temp_project.child("deep/nested/Contract.sol").exists());
+    }
+
+    #[test]
+    fn test_runner_error_project_copy_display() {
+        let err = RunnerError::ProjectCopy("copy failed".to_string());
+        assert_eq!(err.to_string(), "failed to copy project: copy failed");
+    }
+
+    #[test]
+    fn test_runner_error_mutant_application_display() {
+        let err = RunnerError::MutantApplication("apply failed".to_string());
+        assert_eq!(err.to_string(), "failed to apply mutant: apply failed");
+    }
+
+    #[test]
+    fn test_run_forge_test_with_passing_tests() {
+        let project_root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/simple");
+        let (killed, killed_by) = run_forge_test(&project_root).unwrap();
+        assert!(!killed);
+        assert!(killed_by.is_none());
+    }
+
+    #[test]
+    fn test_run_forge_test_with_failing_tests() {
+        use assert_fs::prelude::*;
+
+        let project = assert_fs::TempDir::new().unwrap();
+
+        project
+            .child("foundry.toml")
+            .write_str(
+                r#"[profile.default]
+src = "src"
+test = "test"
+solc = "0.8.30"
+"#,
+            )
+            .unwrap();
+
+        project
+            .child("src/Dummy.sol")
+            .write_str(
+                r#"// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.30;
+contract Dummy {}
+"#,
+            )
+            .unwrap();
+
+        project
+            .child("test/Fail.t.sol")
+            .write_str(
+                r#"// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.30;
+contract FailTest {
+    function test_fail() public pure {
+        assert(false);
+    }
+}
+"#,
+            )
+            .unwrap();
+
+        let (killed, _killed_by) = run_forge_test(project.path()).unwrap();
+        assert!(killed);
+    }
+
+    #[test]
+    fn test_run_mutant_integration() {
+        use crate::generator::gambit::GambitGenerator;
+        use crate::generator::{GeneratorConfig, MutationGenerator};
+        use tempfile::TempDir;
+
+        let project_root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/simple");
+        let temp_dir = TempDir::new().unwrap();
+        let output_dir = temp_dir.path().join("gambit_out");
+
+        let generator = GambitGenerator::new();
+        let config = GeneratorConfig {
+            project_root: project_root.clone(),
+            files: vec![project_root.join("src/Counter.sol")],
+            operators: vec![],
+            output_dir,
+        };
+
+        let mutants = generator.generate(&config).unwrap();
+        assert!(!mutants.is_empty());
+
+        let result = run_mutant(&mutants[0], &project_root).unwrap();
+        assert_eq!(result.mutant_id, 1);
     }
 }

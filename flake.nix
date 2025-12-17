@@ -95,6 +95,7 @@
               rustToolchain
               pkgs.cargo-nextest
               pkgs.foundry
+              pkgs.just
               pkgs.solc-bin."0.8.30"
               pkgs.typos
               pkgs.nixpkgs-fmt

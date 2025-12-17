@@ -63,6 +63,7 @@ inputs.solc.url = "github:EspressoSystems/nix-solc-bin";
 - cargo-nextest
 - cargo-llvm-cov (Linux only)
 - Foundry (from nixpkgs)
+- just
 - solc 0.8.30 (via EspressoSystems/nix-solc-bin)
 - typos
 - nixpkgs-fmt
@@ -137,6 +138,7 @@ mutr
 │   ├── runner.rs         # Test runner (forge test)
 │   └── report.rs         # Results reporting
 ├── Cargo.toml
+├── justfile              # Common dev commands
 └── CLAUDE.md             # Roadmap
 ```
 
@@ -264,6 +266,7 @@ Future optimization: symlink lib/, node_modules/, copy only src/
 - assert_cmd: CLI testing
 - assert_fs: Filesystem fixtures
 - predicates: Assertion helpers
+- pretty_assertions: Better test output with assert_matches!
 
 ## Design Decisions
 
