@@ -63,6 +63,7 @@
               pkgs.foundry
               pkgs.solc-bin."0.8.30"
             ];
+            RUST_BACKTRACE = 1;
           };
         }
       );

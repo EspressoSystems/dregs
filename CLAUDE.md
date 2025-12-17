@@ -9,10 +9,10 @@ A Rust CLI tool that runs mutation testing for Solidity projects using Foundry. 
 
 ### MVP (Current)
 - [x] Project setup (flake.nix, Cargo.toml)
-- [ ] Gambit library integration
-- [ ] Forge library integration for test running
-- [ ] Temp workspace per mutant
+- [x] Gambit library integration
+- [x] Test runner with temp workspace per mutant
 - [ ] Report mutation score + surviving mutants + which test killed
+- [ ] Wire up CLI to run full mutation testing flow
 
 ### v0.2 - Parallel Execution
 - [ ] Run multiple mutants concurrently
@@ -68,15 +68,11 @@ gambit = { git = "https://github.com/Certora/gambit", tag = "v1.0.6" }
 ```
 
 ### Foundry Integration
-Use forge crate as library (exposes `MultiContractRunner`, `ContractRunner`):
-```toml
-[dependencies]
-forge = { git = "https://github.com/foundry-rs/foundry", tag = "v1.4.4" }
-```
-Benefits:
-- Get which specific test killed the mutant
-- No subprocess spawning
-- Access to detailed test results
+Run `forge test` via subprocess (simpler than using forge library internals):
+- Copy project to temp directory
+- Apply mutant file
+- Run `forge test --json` and parse output
+- Extract which test killed the mutant from failure output
 
 ## Testing
 
@@ -180,13 +176,13 @@ fn run_mutant(mutant: &Mutant, project_root: &Path) -> Result<TestResult>
 - Returns `Vec<Mutant>` directly (no JSON parsing needed)
 
 ### Step 3: Test Runner
-- Use `forge::MultiContractRunner` from library
+- Run `forge test` via subprocess (simpler than library)
 - For each mutant:
-  1. Create temp workspace (copy project)
+  1. Create temp workspace (copy project, exclude build artifacts)
   2. Apply mutant file in temp workspace
-  3. Build `MultiContractRunner` for workspace
-  4. Run tests, capture which test killed the mutant
-  5. Clean up temp workspace
+  3. Run `forge test --json` with timeout
+  4. Parse output to capture which test killed the mutant
+  5. Clean up temp workspace (automatic via tempfile)
 - Temp workspace approach enables future parallelism
 
 ### Step 4: Reporting
@@ -249,11 +245,13 @@ Future optimization: symlink lib/, node_modules/, copy only src/
 ### Runtime
 - clap (derive): CLI parsing
 - gambit (git v1.0.6): Mutation generation library
-- forge (git v1.4.4): Test runner library
 - serde + serde_json: Config and report serialization
 - tempfile: Temp directory management
 - thiserror: Typed errors for testable error paths
 - anyhow: Top-level error handling (main.rs only)
+
+### External Tools (must be in PATH)
+- forge: Test runner (via subprocess)
 
 ### Dev Dependencies
 - assert_cmd: CLI testing
@@ -265,6 +263,11 @@ Future optimization: symlink lib/, node_modules/, copy only src/
 - **Temp workspace per mutant**: Cleaner isolation, enables parallelism
 - **Generator trait**: Abstract mutation source for future flexibility
 - **fail-fast**: Stop test run on first failure (mutant killed)
-- **Library over CLI**: Use gambit and forge as libraries for better integration
+- **Gambit as library**: Use gambit crate directly via `run_mutate()` API
+- **Forge as subprocess**: Use `forge test --json` CLI instead of library because:
+  - Forge library internals (`MultiContractRunner`) are not designed for external use
+  - Complex setup (solc config, project paths, compilation) poorly documented
+  - CLI provides stable, versioned interface
+  - JSON output gives same test result data we need
 - **thiserror for internal errors**: Typed errors for testable code paths
 - **anyhow at boundaries**: Only use anyhow in main.rs for unhandled errors
