@@ -3,16 +3,16 @@
 ## Overview
 A Rust CLI tool that runs mutation testing for Solidity projects using Foundry. Uses Gambit for mutation generation with an abstraction layer for future generator support.
 
-## Status: In Progress
+## Status: MVP Complete
 
 ## Roadmap
 
-### MVP (Current)
+### MVP (Complete)
 - [x] Project setup (flake.nix, Cargo.toml)
 - [x] Gambit library integration
 - [x] Test runner with temp workspace per mutant
-- [ ] Report mutation score + surviving mutants + which test killed
-- [ ] Wire up CLI to run full mutation testing flow
+- [x] Report mutation score + surviving mutants + which test killed
+- [x] Wire up CLI to run full mutation testing flow
 
 ### v0.2 - Parallel Execution
 - [ ] Run multiple mutants concurrently

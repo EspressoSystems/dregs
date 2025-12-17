@@ -17,6 +17,7 @@ pub type Result<T> = std::result::Result<T, GeneratorError>;
 pub struct Mutant {
     pub id: u32,
     pub source_path: PathBuf,
+    pub relative_source_path: PathBuf,
     pub mutant_path: PathBuf,
     pub operator: String,
     pub original: String,
@@ -45,6 +46,7 @@ mod tests {
         let mutant = Mutant {
             id: 1,
             source_path: PathBuf::from("src/Counter.sol"),
+            relative_source_path: PathBuf::from("src/Counter.sol"),
             mutant_path: PathBuf::from("gambit_out/mutants/1/Counter.sol"),
             operator: "binary-op-mutation".to_string(),
             original: "+".to_string(),

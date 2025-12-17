@@ -1,5 +1,7 @@
+use crate::generator::Mutant;
 use crate::runner::TestResult;
 use serde::{Deserialize, Serialize};
+use std::fs;
 use std::path::PathBuf;
 use thiserror::Error;
 
@@ -44,12 +46,55 @@ impl Report {
         }
     }
 
-    pub fn print_summary(&self) {
-        todo!("Implement summary printing")
+    pub fn print_summary(&self, mutants: &[Mutant]) {
+        for (result, mutant) in self.results.iter().zip(mutants.iter()) {
+            let status = if result.killed {
+                format!(
+                    "KILLED by {}",
+                    result.killed_by.as_ref().unwrap_or(&"unknown".to_string())
+                )
+            } else {
+                "SURVIVED".to_string()
+            };
+
+            println!(
+                "[{}/{}] {}:{} {}: {}",
+                result.mutant_id,
+                self.total_mutants,
+                mutant.source_path.display(),
+                mutant.line,
+                mutant.operator,
+                status
+            );
+        }
+
+        println!(
+            "Mutation score: {}/{} ({:.0}%)",
+            self.killed_mutants,
+            self.total_mutants,
+            self.mutation_score * 100.0
+        );
+
+        if self.survived_mutants > 0 {
+            let survived_ids: Vec<String> = self
+                .results
+                .iter()
+                .filter(|r| !r.killed)
+                .map(|r| r.mutant_id.to_string())
+                .collect();
+
+            println!(
+                "Surviving mutants: {} (ids: {})",
+                self.survived_mutants,
+                survived_ids.join(", ")
+            );
+        }
     }
 
-    pub fn write_json(&self, _path: &PathBuf) -> Result<()> {
-        todo!("Implement JSON output")
+    pub fn write_json(&self, path: &PathBuf) -> Result<()> {
+        let json = serde_json::to_string_pretty(self)?;
+        fs::write(path, json)?;
+        Ok(())
     }
 }
 
@@ -169,16 +214,111 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(expected = "not yet implemented")]
-    fn test_print_summary_not_implemented() {
+    fn test_print_summary_empty() {
         let report = Report::new(vec![]);
-        report.print_summary();
+        report.print_summary(&[]);
     }
 
     #[test]
-    #[should_panic(expected = "not yet implemented")]
-    fn test_write_json_not_implemented() {
+    fn test_print_summary_with_results() {
+        use crate::generator::Mutant;
+
+        let results = vec![
+            TestResult {
+                mutant_id: 1,
+                killed: true,
+                killed_by: Some("CounterTest::test_increment".to_string()),
+                duration: Duration::from_secs(1),
+            },
+            TestResult {
+                mutant_id: 2,
+                killed: false,
+                killed_by: None,
+                duration: Duration::from_millis(500),
+            },
+        ];
+
+        let mutants = vec![
+            Mutant {
+                id: 1,
+                source_path: PathBuf::from("src/Counter.sol"),
+                relative_source_path: PathBuf::from("src/Counter.sol"),
+                mutant_path: PathBuf::from("gambit_out/mutants/1/Counter.sol"),
+                operator: "binary-op-mutation".to_string(),
+                original: "+".to_string(),
+                replacement: "-".to_string(),
+                line: 12,
+            },
+            Mutant {
+                id: 2,
+                source_path: PathBuf::from("src/Counter.sol"),
+                relative_source_path: PathBuf::from("src/Counter.sol"),
+                mutant_path: PathBuf::from("gambit_out/mutants/2/Counter.sol"),
+                operator: "require-mutation".to_string(),
+                original: "require(true)".to_string(),
+                replacement: "require(false)".to_string(),
+                line: 15,
+            },
+        ];
+
+        let report = Report::new(results);
+        report.print_summary(&mutants);
+    }
+
+    #[test]
+    fn test_write_json_success() {
+        use assert_fs::TempDir;
+
+        let results = vec![TestResult {
+            mutant_id: 1,
+            killed: true,
+            killed_by: Some("Test1".to_string()),
+            duration: Duration::from_secs(1),
+        }];
+
+        let report = Report::new(results);
+        let temp = TempDir::new().unwrap();
+        let output_path = temp.path().join("report.json");
+
+        let result = report.write_json(&output_path);
+        assert!(result.is_ok());
+        assert!(output_path.exists());
+
+        let content = std::fs::read_to_string(&output_path).unwrap();
+        assert!(content.contains("total_mutants"));
+        assert!(content.contains("mutation_score"));
+    }
+
+    #[test]
+    fn test_write_json_io_error() {
         let report = Report::new(vec![]);
-        let _ = report.write_json(&PathBuf::from("test.json"));
+        let result = report.write_json(&PathBuf::from("/nonexistent/path/report.json"));
+        pretty_assertions::assert_matches!(result, Err(ReportError::Io(_)));
+    }
+
+    #[test]
+    fn test_print_summary_killed_without_test_name() {
+        use crate::generator::Mutant;
+
+        let results = vec![TestResult {
+            mutant_id: 1,
+            killed: true,
+            killed_by: None,
+            duration: Duration::from_secs(1),
+        }];
+
+        let mutants = vec![Mutant {
+            id: 1,
+            source_path: PathBuf::from("src/Test.sol"),
+            relative_source_path: PathBuf::from("src/Test.sol"),
+            mutant_path: PathBuf::from("gambit_out/mutants/1/Test.sol"),
+            operator: "test-op".to_string(),
+            original: "old".to_string(),
+            replacement: "new".to_string(),
+            line: 5,
+        }];
+
+        let report = Report::new(results);
+        report.print_summary(&mutants);
     }
 }

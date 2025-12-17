@@ -11,6 +11,7 @@ serde_json = "1.0.145"
 tempfile = "3.23.0"
 thiserror = "2.0.17"
 gambit = { git = "https://github.com/Certora/gambit", tag = "v1.0.6" }
+glob = "0.3.3"
 
 [dev-dependencies]
 assert_cmd = "2.1.1"

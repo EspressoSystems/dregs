@@ -75,6 +75,7 @@ impl MutationGenerator for GambitGenerator {
                 mutants.push(Mutant {
                     id: mutant_id,
                     source_path: source_path.to_path_buf(),
+                    relative_source_path: relative_path.clone(),
                     mutant_path,
                     operator: format!("{:?}", gambit_mutant.op),
                     original: gambit_mutant.orig.clone(),

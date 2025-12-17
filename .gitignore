@@ -29,3 +29,5 @@ gambit_out/
 # Added by cargo
 
 /target
+tmp/
+lcov.info

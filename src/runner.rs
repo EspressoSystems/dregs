@@ -36,7 +36,7 @@ pub fn run_mutant(mutant: &Mutant, project_root: &Path) -> Result<TestResult> {
     let temp_project = temp_dir.path();
 
     copy_project_to_temp(project_root, temp_project)?;
-    apply_mutant_to_project(mutant, project_root, temp_project)?;
+    apply_mutant_to_project(mutant, temp_project)?;
 
     let (killed, killed_by) = run_forge_test(temp_project)?;
 
@@ -89,21 +89,12 @@ fn copy_dir_recursive(src: &Path, dst: &Path) -> std::io::Result<()> {
     Ok(())
 }
 
-fn apply_mutant_to_project(
-    mutant: &Mutant,
-    project_root: &Path,
-    temp_project: &Path,
-) -> Result<()> {
+fn apply_mutant_to_project(mutant: &Mutant, temp_project: &Path) -> Result<()> {
     let mutant_content = fs::read(&mutant.mutant_path).map_err(|e| {
         RunnerError::MutantApplication(format!("failed to read mutant file: {}", e))
     })?;
 
-    let relative_source_path = mutant
-        .source_path
-        .strip_prefix(project_root)
-        .unwrap_or(&mutant.source_path);
-
-    let target_path = temp_project.join(relative_source_path);
+    let target_path = temp_project.join(&mutant.relative_source_path);
 
     if let Some(parent) = target_path.parent() {
         fs::create_dir_all(parent).expect("failed to create parent directories");
@@ -155,10 +146,10 @@ fn parse_failed_test_from_output(stdout: &str, stderr: &str) -> Option<String> {
 
 fn parse_json_test_output(line: &str) -> Option<String> {
     let json = serde_json::from_str::<serde_json::Value>(line).ok()?;
-    let test_results = json.get("test_results")?.as_object()?;
+    let obj = json.as_object()?;
 
-    for (contract_path, contract_tests) in test_results {
-        let tests = contract_tests.get("test_results")?.as_object()?;
+    for (contract_path, contract_data) in obj {
+        let tests = contract_data.get("test_results")?.as_object()?;
         for (test_name, test_result) in tests {
             if test_result.get("status")?.as_str() == Some("Failure") {
                 let contract_name = extract_contract_name_from_path(contract_path);
@@ -305,14 +296,14 @@ mod tests {
 
     #[test]
     fn test_parse_failed_test_from_output_json_format() {
-        let json_output = r#"{"test_results":{"test/Counter.t.sol:CounterTest":{"test_results":{"testIncrement":{"status":"Failure"}}}}}"#;
+        let json_output = r#"{"test/Counter.t.sol:CounterTest":{"test_results":{"testIncrement":{"status":"Failure"}}}}"#;
         let result = parse_failed_test_from_output(json_output, "");
         assert_eq!(result, Some("CounterTest::testIncrement".to_string()));
     }
 
     #[test]
     fn test_parse_json_test_output_no_failures() {
-        let json_output = r#"{"test_results":{"test/Counter.t.sol:CounterTest":{"test_results":{"testIncrement":{"status":"Success"}}}}}"#;
+        let json_output = r#"{"test/Counter.t.sol:CounterTest":{"test_results":{"testIncrement":{"status":"Success"}}}}"#;
         let result = parse_json_test_output(json_output);
         assert!(result.is_none());
     }
@@ -371,6 +362,7 @@ mod tests {
         let mutant = Mutant {
             id: 1,
             source_path: project_dir.path().join("src/Counter.sol"),
+            relative_source_path: PathBuf::from("src/Counter.sol"),
             mutant_path: mutant_dir.path().join("mutant.sol"),
             operator: "test".to_string(),
             original: "original".to_string(),
@@ -378,7 +370,7 @@ mod tests {
             line: 1,
         };
 
-        let result = apply_mutant_to_project(&mutant, project_dir.path(), temp_project.path());
+        let result = apply_mutant_to_project(&mutant, temp_project.path());
         assert!(result.is_ok());
 
         let content =
@@ -390,12 +382,12 @@ mod tests {
     fn test_apply_mutant_to_project_missing_mutant_file() {
         use assert_fs::TempDir;
 
-        let project_dir = TempDir::new().unwrap();
         let temp_project = TempDir::new().unwrap();
 
         let mutant = Mutant {
             id: 1,
-            source_path: project_dir.path().join("src/Counter.sol"),
+            source_path: PathBuf::from("src/Counter.sol"),
+            relative_source_path: PathBuf::from("src/Counter.sol"),
             mutant_path: PathBuf::from("/nonexistent/mutant.sol"),
             operator: "test".to_string(),
             original: "original".to_string(),
@@ -403,7 +395,7 @@ mod tests {
             line: 1,
         };
 
-        let result = apply_mutant_to_project(&mutant, project_dir.path(), temp_project.path());
+        let result = apply_mutant_to_project(&mutant, temp_project.path());
         pretty_assertions::assert_matches!(result, Err(RunnerError::MutantApplication(_)));
     }
 
@@ -412,14 +404,14 @@ mod tests {
         use assert_fs::TempDir;
         use assert_fs::prelude::*;
 
-        let project_dir = TempDir::new().unwrap();
         let mutant_dir = TempDir::new().unwrap();
         mutant_dir.child("mutant.sol").write_str("mutated").unwrap();
         let temp_project = TempDir::new().unwrap();
 
         let mutant = Mutant {
             id: 1,
-            source_path: project_dir.path().join("deep/nested/Contract.sol"),
+            source_path: PathBuf::from("deep/nested/Contract.sol"),
+            relative_source_path: PathBuf::from("deep/nested/Contract.sol"),
             mutant_path: mutant_dir.path().join("mutant.sol"),
             operator: "test".to_string(),
             original: "original".to_string(),
@@ -427,7 +419,7 @@ mod tests {
             line: 1,
         };
 
-        let result = apply_mutant_to_project(&mutant, project_dir.path(), temp_project.path());
+        let result = apply_mutant_to_project(&mutant, temp_project.path());
         assert!(result.is_ok());
         assert!(temp_project.child("deep/nested/Contract.sol").exists());
     }
@@ -520,5 +512,7 @@ contract FailTest {
 
         let result = run_mutant(&mutants[0], &project_root).unwrap();
         assert_eq!(result.mutant_id, 1);
+        assert!(result.killed);
+        assert!(result.killed_by.as_ref().unwrap().contains("CounterTest"));
     }
 }
