@@ -51,14 +51,19 @@ inputs.solc.url = "github:EspressoSystems/nix-solc-bin";
 
 ### Pre-commit Hooks (via git-hooks.nix)
 - rustfmt
-- clippy
-- cargo nextest run
+- clippy (with -D warnings, runs on rust + toml)
+- cargo nextest run (runs on rust + toml)
+- typos (spell checking)
+- cargo-lock (sync Cargo.lock with Cargo.toml)
+- nixpkgs-fmt (nix formatting)
 
 ### Tools in devShell
 - Rust stable (via oxalica)
 - cargo-nextest
 - Foundry (from nixpkgs)
 - solc 0.8.30 (via EspressoSystems/nix-solc-bin)
+- typos
+- nixpkgs-fmt
 
 ### Gambit Integration
 Use as Rust git dependency (has lib.rs with `run_mutate()` API):
