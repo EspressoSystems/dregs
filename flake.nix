@@ -1,10 +1,11 @@
 {
   inputs.nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
+  inputs.crane.url = "github:ipetkov/crane";
   inputs.rust-overlay.url = "github:oxalica/rust-overlay";
   inputs.git-hooks.url = "github:cachix/git-hooks.nix";
   inputs.solc.url = "github:EspressoSystems/nix-solc-bin";
 
-  outputs = { self, nixpkgs, rust-overlay, git-hooks, solc }:
+  outputs = { self, nixpkgs, crane, rust-overlay, git-hooks, solc }:
     let
       systems = [ "x86_64-linux" "aarch64-linux" "x86_64-darwin" "aarch64-darwin" ];
       forAllSystems = f: nixpkgs.lib.genAttrs systems (system: f system);
@@ -106,5 +107,64 @@
           };
         }
       );
+
+      packages = forAllSystems (system:
+        let
+          pkgs = import nixpkgs {
+            inherit system;
+            overlays = [
+              rust-overlay.overlays.default
+              solc.overlays.default
+            ];
+          };
+          craneLib = (crane.mkLib pkgs).overrideToolchain (p:
+            p.rust-bin.stable.latest.default
+          );
+
+          unfilteredSrc = ./.;
+          src = pkgs.lib.cleanSourceWith {
+            src = unfilteredSrc;
+            filter = path: type:
+              (craneLib.filterCargoSources path type)
+              || (builtins.match ".*tests/fixtures/.*" path != null);
+          };
+
+          commonArgs = {
+            inherit src;
+            strictDeps = true;
+          };
+
+          cargoArtifacts = craneLib.buildDepsOnly commonArgs;
+
+          mutr-unwrapped = craneLib.buildPackage (commonArgs // {
+            inherit cargoArtifacts;
+            nativeCheckInputs = [ pkgs.foundry pkgs.solc-bin."0.8.30" ];
+            preCheck = ''
+              export HOME=$(mktemp -d)
+              export FOUNDRY_SOLC=${pkgs.solc-bin."0.8.30"}/bin/solc
+            '';
+          });
+
+          mutr = pkgs.runCommand "mutr"
+            {
+              nativeBuildInputs = [ pkgs.makeWrapper ];
+            } ''
+            mkdir -p $out/bin
+            makeWrapper ${mutr-unwrapped}/bin/mutr $out/bin/mutr \
+              --prefix PATH : ${pkgs.lib.makeBinPath [ pkgs.foundry ]}
+          '';
+        in
+        {
+          default = mutr;
+          unwrapped = mutr-unwrapped;
+        }
+      );
+
+      apps = forAllSystems (system: {
+        default = {
+          type = "app";
+          program = "${self.packages.${system}.default}/bin/mutr";
+        };
+      });
     };
 }

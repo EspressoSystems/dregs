@@ -112,12 +112,23 @@ fn run_forge_test(project_root: &Path) -> Result<(bool, Option<String>)> {
         .current_dir(project_root)
         .output()?;
 
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+
     if output.status.success() {
         return Ok((false, None));
     }
 
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    let stderr = String::from_utf8_lossy(&output.stderr);
+    // Check if this is a compilation/setup error vs test failure
+    if stderr.contains("Compiler run failed")
+        || stderr.contains("could not compile")
+        || stderr.contains("Failed to resolve")
+    {
+        return Err(RunnerError::TestExecution(format!(
+            "forge compilation failed:\nstdout: {}\nstderr: {}",
+            stdout, stderr
+        )));
+    }
 
     let killed_by = parse_failed_test_from_output(&stdout, &stderr);
 
@@ -487,6 +498,32 @@ contract FailTest {
 
         let (killed, _killed_by) = run_forge_test(project.path()).unwrap();
         assert!(killed);
+    }
+
+    #[test]
+    fn test_run_forge_test_compilation_error() {
+        use assert_fs::prelude::*;
+
+        let project = assert_fs::TempDir::new().unwrap();
+
+        project
+            .child("foundry.toml")
+            .write_str(
+                r#"[profile.default]
+src = "src"
+test = "test"
+solc = "0.8.30"
+"#,
+            )
+            .unwrap();
+
+        project
+            .child("src/Invalid.sol")
+            .write_str("this is not valid solidity code")
+            .unwrap();
+
+        let result = run_forge_test(project.path());
+        pretty_assertions::assert_matches!(result, Err(RunnerError::TestExecution(_)));
     }
 
     #[test]

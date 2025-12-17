@@ -14,12 +14,12 @@ A Rust CLI tool that runs mutation testing for Solidity projects using Foundry. 
 - [x] Report mutation score + surviving mutants + which test killed
 - [x] Wire up CLI to run full mutation testing flow
 
-### v0.2 - Nix Package with Crane
-- [ ] Add crane input to flake.nix
-- [ ] Build mutr with craneLib.buildPackage
-- [ ] Wrap binary to include forge in PATH
-- [ ] Export packages.default and apps.default
-- [ ] Usage: `nix run github:sveitser/mutr -- run --project .`
+### v0.2 - Nix Package with Crane (Complete)
+- [x] Add crane input to flake.nix
+- [x] Build mutr with craneLib.buildPackage
+- [x] Wrap binary to include forge in PATH
+- [x] Export packages.default and apps.default
+- [x] Usage: `nix run github:sveitser/mutr -- run --project .`
 
 ### v0.3 - Parallel Execution
 - [ ] Run multiple mutants concurrently
@@ -314,6 +314,13 @@ Future optimization: symlink lib/, node_modules/, copy only src/
 - assert_fs: Filesystem fixtures
 - predicates: Assertion helpers
 - pretty_assertions: Better test output with assert_matches!
+
+## Maintenance
+
+### Error Handling
+- [ ] Improve error messages when shelling out to external commands (forge, solc) fails
+  - Capture and display stdout/stderr on failure
+  - Distinguish between compilation errors, test failures, and setup issues
 
 ## Design Decisions
 
