@@ -53,6 +53,7 @@ inputs.solc.url = "github:EspressoSystems/nix-solc-bin";
 - rustfmt
 - clippy (with -D warnings, runs on rust + toml)
 - cargo nextest run (runs on rust + toml)
+- cargo-llvm-cov (100% line coverage required, runs on rust + toml; skipped on Darwin)
 - typos (spell checking)
 - cargo-lock (sync Cargo.lock with Cargo.toml)
 - nixpkgs-fmt (nix formatting)
@@ -60,6 +61,7 @@ inputs.solc.url = "github:EspressoSystems/nix-solc-bin";
 ### Tools in devShell
 - Rust stable (via oxalica)
 - cargo-nextest
+- cargo-llvm-cov (Linux only)
 - Foundry (from nixpkgs)
 - solc 0.8.30 (via EspressoSystems/nix-solc-bin)
 - typos

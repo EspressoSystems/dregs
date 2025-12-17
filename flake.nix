@@ -19,7 +19,9 @@
               solc.overlays.default
             ];
           };
-          rustToolchain = pkgs.rust-bin.stable.latest.default;
+          rustToolchain = pkgs.rust-bin.stable.latest.default.override {
+            extensions = [ "llvm-tools-preview" ];
+          };
         in
         {
           pre-commit-check = git-hooks.lib.${system}.run {
@@ -39,8 +41,18 @@
               };
               cargo-test = {
                 enable = true;
-                name = "cargo nextest";
+                name = "test";
                 entry = "${pkgs.cargo-nextest}/bin/cargo-nextest nextest run";
+                types_or = [ "rust" "toml" ];
+                pass_filenames = false;
+              };
+              cargo-llvm-cov = {
+                enable = true;
+                name = "coverage";
+                entry =
+                  if pkgs.stdenv.isDarwin
+                  then "echo 'WARNING: cargo-llvm-cov skipped on Darwin (package broken)'"
+                  else "${pkgs.cargo-llvm-cov}/bin/cargo-llvm-cov llvm-cov --fail-under-lines 100";
                 types_or = [ "rust" "toml" ];
                 pass_filenames = false;
               };
@@ -52,7 +64,7 @@
               };
               cargo-lock = {
                 enable = true;
-                name = "cargo lock";
+                name = "cargo-lock";
                 entry = "${rustToolchain}/bin/cargo update --workspace --verbose";
                 types_or = [ "toml" ];
                 pass_filenames = false;
@@ -72,7 +84,9 @@
               solc.overlays.default
             ];
           };
-          rustToolchain = pkgs.rust-bin.stable.latest.default;
+          rustToolchain = pkgs.rust-bin.stable.latest.default.override {
+            extensions = [ "llvm-tools-preview" ];
+          };
         in
         {
           default = pkgs.mkShellNoCC {
@@ -84,6 +98,8 @@
               pkgs.solc-bin."0.8.30"
               pkgs.typos
               pkgs.nixpkgs-fmt
+            ] ++ pkgs.lib.optionals (!pkgs.stdenv.isDarwin) [
+              pkgs.cargo-llvm-cov
             ];
             RUST_BACKTRACE = 1;
           };
