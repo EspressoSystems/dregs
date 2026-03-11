@@ -70,6 +70,7 @@
                 types_or = [ "toml" ];
                 pass_filenames = false;
               };
+              prettier.enable = true;
               nixpkgs-fmt.enable = true;
             };
           };
@@ -99,6 +100,7 @@
               pkgs.just
               pkgs.solc-bin."0.8.30"
               pkgs.typos
+              pkgs.nodePackages.prettier
               pkgs.nixpkgs-fmt
             ] ++ pkgs.lib.optionals (!pkgs.stdenv.isDarwin) [
               pkgs.cargo-llvm-cov

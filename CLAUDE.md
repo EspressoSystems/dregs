@@ -1,6 +1,7 @@
 # mutr - Solidity Mutation Testing Runner
 
 ## Overview
+
 A Rust CLI tool that runs mutation testing for Solidity projects using Foundry. Uses Gambit for mutation generation with an abstraction layer for future generator support.
 
 ## Status: v0.3 Complete
@@ -8,6 +9,7 @@ A Rust CLI tool that runs mutation testing for Solidity projects using Foundry. 
 ## Roadmap
 
 ### MVP (Complete)
+
 - [x] Project setup (flake.nix, Cargo.toml)
 - [x] Gambit library integration
 - [x] Test runner with temp workspace per mutant
@@ -15,6 +17,7 @@ A Rust CLI tool that runs mutation testing for Solidity projects using Foundry. 
 - [x] Wire up CLI to run full mutation testing flow
 
 ### v0.2 - Nix Package with Crane (Complete)
+
 - [x] Add crane input to flake.nix
 - [x] Build mutr with craneLib.buildPackage
 - [x] Wrap binary to include forge in PATH
@@ -22,6 +25,7 @@ A Rust CLI tool that runs mutation testing for Solidity projects using Foundry. 
 - [x] Usage: `nix run github:sveitser/mutr -- run --project .`
 
 ### v0.3 - Foundry.toml Configuration (Complete)
+
 - [x] Parse foundry.toml for project settings
 - [x] Auto-detect project root from file paths
 - [x] Pass optimizer, evm_version, remappings to gambit
@@ -32,14 +36,17 @@ A Rust CLI tool that runs mutation testing for Solidity projects using Foundry. 
 - [x] Note: gambit expects solc binary path, version strings from foundry.toml are ignored with warning
 
 ### v0.4 - Parallel Execution
+
 - [ ] Run multiple mutants concurrently
 - [ ] Configurable worker count
 
 ### v0.5 - Incremental Testing
+
 - [ ] Cache test results by mutant hash
 - [ ] Only re-test changed mutants
 
 ### v0.6 - Coverage Filtering
+
 - [ ] Parse forge coverage output
 - [ ] Only mutate lines covered by tests
 
@@ -50,7 +57,9 @@ Use direnv with nix-direnv to automatically load the dev environment.
 Use the rust-dev agent for Rust implementation tasks.
 
 ### Commits
+
 Use semantic commit messages: `type: description`
+
 - feat: new feature
 - fix: bug fix
 - docs: documentation
@@ -59,6 +68,7 @@ Use semantic commit messages: `type: description`
 - chore: maintenance
 
 ### Pre-commit Hooks (via git-hooks.nix)
+
 - rustfmt
 - clippy (with -D warnings, runs on rust + toml)
 - cargo nextest run (runs on rust + toml)
@@ -68,6 +78,7 @@ Use semantic commit messages: `type: description`
 - nixpkgs-fmt (nix formatting)
 
 ### Tools in devShell
+
 - Rust stable (via oxalica)
 - cargo-nextest
 - cargo-llvm-cov (Linux only)
@@ -98,6 +109,7 @@ mutr
 ## Dependencies
 
 ### Runtime
+
 - clap (derive): CLI parsing
 - gambit (git v1.0.6): Mutation generation library
 - glob: File discovery
@@ -108,9 +120,11 @@ mutr
 - anyhow: Top-level error handling (main.rs only)
 
 ### External Tools (must be in PATH)
+
 - forge: Test runner and remapping resolution (via subprocess)
 
 ### Dev Dependencies
+
 - assert_cmd: CLI testing
 - assert_fs: Filesystem fixtures
 - predicates: Assertion helpers
