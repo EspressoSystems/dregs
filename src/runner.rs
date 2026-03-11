@@ -105,7 +105,7 @@ fn apply_mutant_to_project(mutant: &Mutant, temp_project: &Path) -> Result<()> {
     Ok(())
 }
 
-fn run_forge_test(project_root: &Path) -> Result<(bool, Option<String>)> {
+pub fn run_forge_test(project_root: &Path) -> Result<(bool, Option<String>)> {
     let output = Command::new("forge")
         .arg("test")
         .arg("--json")

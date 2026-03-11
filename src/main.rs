@@ -4,9 +4,10 @@ use mutr::config::{find_project_root, parse_foundry_toml, resolve_remappings};
 use mutr::generator::gambit::GambitGenerator;
 use mutr::generator::{GeneratorConfig, MutationGenerator};
 use mutr::report::Report;
-use mutr::runner::run_mutant;
+use mutr::runner::{run_forge_test, run_mutant};
 use std::path::PathBuf;
 use std::process;
+use std::time::Instant;
 
 #[derive(Parser)]
 #[command(name = "mutr")]
@@ -123,6 +124,18 @@ fn run_mutation_testing(
         }
         fc
     });
+
+    eprintln!("Running baseline tests...");
+    let baseline_start = Instant::now();
+    let (has_failures, _) =
+        run_forge_test(&project_root).context("failed to run baseline tests")?;
+    if has_failures {
+        anyhow::bail!("baseline tests failed - fix tests before running mutation testing");
+    }
+    eprintln!(
+        "Baseline tests passed ({:.1}s)",
+        baseline_start.elapsed().as_secs_f64()
+    );
 
     let output_dir = project_root.join("gambit_out");
     let config = GeneratorConfig {
