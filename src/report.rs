@@ -2,6 +2,7 @@ use crate::generator::Mutant;
 use crate::runner::TestResult;
 use serde::{Deserialize, Serialize};
 use std::fs;
+use std::io::Write;
 use std::path::PathBuf;
 use thiserror::Error;
 
@@ -47,6 +48,11 @@ impl Report {
     }
 
     pub fn print_summary(&self, mutants: &[Mutant]) {
+        self.write_summary(&mut std::io::stdout(), mutants)
+            .expect("failed to write summary to stdout");
+    }
+
+    pub fn write_summary(&self, w: &mut impl Write, mutants: &[Mutant]) -> std::io::Result<()> {
         for (result, mutant) in self.results.iter().zip(mutants.iter()) {
             let status = if result.killed {
                 format!(
@@ -57,7 +63,8 @@ impl Report {
                 "SURVIVED".to_string()
             };
 
-            println!(
+            writeln!(
+                w,
                 "[{}/{}] {}:{} {}: {}",
                 result.mutant_id,
                 self.total_mutants,
@@ -65,30 +72,35 @@ impl Report {
                 mutant.line,
                 mutant.operator,
                 status
-            );
+            )?;
         }
 
-        println!(
+        writeln!(
+            w,
             "Mutation score: {}/{} ({:.0}%)",
             self.killed_mutants,
             self.total_mutants,
             self.mutation_score * 100.0
-        );
+        )?;
 
         if self.survived_mutants > 0 {
-            let survived_ids: Vec<String> = self
-                .results
-                .iter()
-                .filter(|r| !r.killed)
-                .map(|r| r.mutant_id.to_string())
-                .collect();
-
-            println!(
-                "Surviving mutants: {} (ids: {})",
-                self.survived_mutants,
-                survived_ids.join(", ")
-            );
+            writeln!(w, "Surviving mutants:")?;
+            for (result, mutant) in self.results.iter().zip(mutants.iter()) {
+                if !result.killed {
+                    writeln!(
+                        w,
+                        "  [{}] {}:{} {}",
+                        result.mutant_id,
+                        mutant.source_path.display(),
+                        mutant.line,
+                        mutant.operator
+                    )?;
+                    writeln!(w, "     `{}` -> `{}`", mutant.original, mutant.replacement)?;
+                }
+            }
         }
+
+        Ok(())
     }
 
     pub fn write_json(&self, path: &PathBuf) -> Result<()> {
@@ -101,7 +113,50 @@ impl Report {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::generator::Mutant;
     use std::time::Duration;
+
+    fn sample_mixed_results() -> (Vec<TestResult>, Vec<Mutant>) {
+        let results = vec![
+            TestResult {
+                mutant_id: 1,
+                killed: true,
+                killed_by: Some("CounterTest::test_increment".to_string()),
+                duration: Duration::from_secs(1),
+            },
+            TestResult {
+                mutant_id: 2,
+                killed: false,
+                killed_by: None,
+                duration: Duration::from_millis(500),
+            },
+        ];
+
+        let mutants = vec![
+            Mutant {
+                id: 1,
+                source_path: PathBuf::from("src/Counter.sol"),
+                relative_source_path: PathBuf::from("src/Counter.sol"),
+                mutant_path: PathBuf::from("gambit_out/mutants/1/Counter.sol"),
+                operator: "binary-op-mutation".to_string(),
+                original: "+".to_string(),
+                replacement: "-".to_string(),
+                line: 12,
+            },
+            Mutant {
+                id: 2,
+                source_path: PathBuf::from("src/Counter.sol"),
+                relative_source_path: PathBuf::from("src/Counter.sol"),
+                mutant_path: PathBuf::from("gambit_out/mutants/2/Counter.sol"),
+                operator: "require-mutation".to_string(),
+                original: "require(true)".to_string(),
+                replacement: "require(false)".to_string(),
+                line: 15,
+            },
+        ];
+
+        (results, mutants)
+    }
 
     #[test]
     fn test_report_creation_all_killed() {
@@ -214,55 +269,12 @@ mod tests {
     }
 
     #[test]
-    fn test_print_summary_empty() {
+    fn test_write_summary_empty() {
         let report = Report::new(vec![]);
-        report.print_summary(&[]);
-    }
-
-    #[test]
-    fn test_print_summary_with_results() {
-        use crate::generator::Mutant;
-
-        let results = vec![
-            TestResult {
-                mutant_id: 1,
-                killed: true,
-                killed_by: Some("CounterTest::test_increment".to_string()),
-                duration: Duration::from_secs(1),
-            },
-            TestResult {
-                mutant_id: 2,
-                killed: false,
-                killed_by: None,
-                duration: Duration::from_millis(500),
-            },
-        ];
-
-        let mutants = vec![
-            Mutant {
-                id: 1,
-                source_path: PathBuf::from("src/Counter.sol"),
-                relative_source_path: PathBuf::from("src/Counter.sol"),
-                mutant_path: PathBuf::from("gambit_out/mutants/1/Counter.sol"),
-                operator: "binary-op-mutation".to_string(),
-                original: "+".to_string(),
-                replacement: "-".to_string(),
-                line: 12,
-            },
-            Mutant {
-                id: 2,
-                source_path: PathBuf::from("src/Counter.sol"),
-                relative_source_path: PathBuf::from("src/Counter.sol"),
-                mutant_path: PathBuf::from("gambit_out/mutants/2/Counter.sol"),
-                operator: "require-mutation".to_string(),
-                original: "require(true)".to_string(),
-                replacement: "require(false)".to_string(),
-                line: 15,
-            },
-        ];
-
-        let report = Report::new(results);
-        report.print_summary(&mutants);
+        let mut output = Vec::new();
+        report.write_summary(&mut output, &[]).unwrap();
+        let output = String::from_utf8(output).unwrap();
+        assert!(output.contains("Mutation score: 0/0"));
     }
 
     #[test]
@@ -297,9 +309,71 @@ mod tests {
     }
 
     #[test]
-    fn test_print_summary_killed_without_test_name() {
-        use crate::generator::Mutant;
+    fn test_survivor_diff_in_summary() {
+        let (results, mutants) = sample_mixed_results();
+        let report = Report::new(results);
 
+        let mut output = Vec::new();
+        report.write_summary(&mut output, &mutants).unwrap();
+        let output = String::from_utf8(output).unwrap();
+
+        assert!(output.contains("Surviving mutants:"));
+        assert!(output.contains("src/Counter.sol:15 require-mutation"));
+        assert!(output.contains("`require(true)` -> `require(false)`"));
+        assert!(!output.contains("`+` -> `-`"));
+    }
+
+    #[test]
+    fn test_no_survivors_no_diff_section() {
+        let results = vec![
+            TestResult {
+                mutant_id: 1,
+                killed: true,
+                killed_by: Some("Test1".to_string()),
+                duration: Duration::from_secs(1),
+            },
+            TestResult {
+                mutant_id: 2,
+                killed: true,
+                killed_by: Some("Test2".to_string()),
+                duration: Duration::from_secs(1),
+            },
+        ];
+
+        let mutants = vec![
+            Mutant {
+                id: 1,
+                source_path: PathBuf::from("src/A.sol"),
+                relative_source_path: PathBuf::from("src/A.sol"),
+                mutant_path: PathBuf::from("gambit_out/mutants/1/A.sol"),
+                operator: "op1".to_string(),
+                original: "a".to_string(),
+                replacement: "b".to_string(),
+                line: 1,
+            },
+            Mutant {
+                id: 2,
+                source_path: PathBuf::from("src/B.sol"),
+                relative_source_path: PathBuf::from("src/B.sol"),
+                mutant_path: PathBuf::from("gambit_out/mutants/2/B.sol"),
+                operator: "op2".to_string(),
+                original: "c".to_string(),
+                replacement: "d".to_string(),
+                line: 2,
+            },
+        ];
+
+        let report = Report::new(results);
+
+        let mut output = Vec::new();
+        report.write_summary(&mut output, &mutants).unwrap();
+        let output = String::from_utf8(output).unwrap();
+
+        assert!(!output.contains("Surviving mutants:"));
+    }
+
+    #[test]
+    fn test_write_summary_killed_without_test_name() {
         let results = vec![TestResult {
             mutant_id: 1,
             killed: true,
@@ -319,6 +393,18 @@ mod tests {
         }];
 
         let report = Report::new(results);
-        report.print_summary(&mutants);
+        let mut output = Vec::new();
+        report.write_summary(&mut output, &mutants).unwrap();
+        let output = String::from_utf8(output).unwrap();
+        assert!(output.contains("KILLED by unknown"));
+    }
+
+    #[test]
+    fn test_write_summary_io_error() {
+        let (results, mutants) = sample_mixed_results();
+        let report = Report::new(results);
+        let mut buf = [0u8; 0];
+        let result = report.write_summary(&mut buf.as_mut_slice(), &mutants);
+        assert!(result.is_err());
     }
 }

@@ -211,6 +211,9 @@ fn run_mutation_testing(
             "SURVIVED".to_string()
         };
         eprintln!("  -> {} ({:.1}s)", status, result.duration.as_secs_f64());
+        if !result.killed {
+            eprintln!("     `{}` -> `{}`", mutant.original, mutant.replacement);
+        }
         results.push(result);
     }
 

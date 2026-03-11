@@ -68,7 +68,7 @@ fn copy_project_to_temp(source: &Path, dest: &Path) -> Result<()> {
     copy_dir_recursive(source, dest).map_err(|e| RunnerError::ProjectCopy(e.to_string()))
 }
 
-fn copy_dir_recursive(src: &Path, dst: &Path) -> std::io::Result<()> {
+pub(crate) fn copy_dir_recursive(src: &Path, dst: &Path) -> std::io::Result<()> {
     if !dst.exists() {
         fs::create_dir_all(dst)?;
     }
@@ -527,7 +527,7 @@ mod tests {
 
     #[test]
     fn test_run_forge_test_with_passing_tests() {
-        let project_root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/simple");
+        let (_temp, project_root) = crate::test_utils::fixture_to_temp("simple");
         let result = run_forge_test(&project_root, &[]).unwrap();
         assert!(!result.failed);
         assert!(result.killed_by.is_none());
@@ -674,7 +674,7 @@ solc = "0.8.30"
 
     #[test]
     fn test_list_forge_tests_integration() {
-        let project_root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/simple");
+        let (_temp, project_root) = crate::test_utils::fixture_to_temp("simple");
         let result = list_forge_tests(&project_root, &[]).unwrap();
         assert!(result.contains(&"CounterTest::test_Increment".to_string()));
         assert!(result.contains(&"CounterTest::test_Decrement".to_string()));
@@ -683,7 +683,7 @@ solc = "0.8.30"
 
     #[test]
     fn test_list_forge_tests_with_filter() {
-        let project_root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/simple");
+        let (_temp, project_root) = crate::test_utils::fixture_to_temp("simple");
         let args = vec!["--match-test".to_string(), "Increment".to_string()];
         let result = list_forge_tests(&project_root, &args).unwrap();
         assert_eq!(result, vec!["CounterTest::test_Increment"]);
@@ -691,7 +691,7 @@ solc = "0.8.30"
 
     #[test]
     fn test_run_forge_test_with_filter() {
-        let project_root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/simple");
+        let (_temp, project_root) = crate::test_utils::fixture_to_temp("simple");
         let args = vec!["--match-test".to_string(), "Increment".to_string()];
         let result = run_forge_test(&project_root, &args).unwrap();
         assert!(!result.failed);
@@ -703,7 +703,7 @@ solc = "0.8.30"
         use crate::generator::{GeneratorConfig, MutationGenerator};
         use tempfile::TempDir;
 
-        let project_root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/simple");
+        let (_fixture_temp, project_root) = crate::test_utils::fixture_to_temp("simple");
         let temp_dir = TempDir::new().unwrap();
         let output_dir = temp_dir.path().join("gambit_out");
 

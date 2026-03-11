@@ -154,7 +154,7 @@ mod tests {
         use tempfile::TempDir;
 
         let generator = GambitGenerator::new();
-        let project_root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/simple");
+        let (_fixture_temp, project_root) = crate::test_utils::fixture_to_temp("simple");
         let temp_dir = TempDir::new().unwrap();
         let output_dir = temp_dir.path().join("gambit_out");
 
@@ -185,7 +185,7 @@ mod tests {
         use tempfile::TempDir;
 
         let generator = GambitGenerator::new();
-        let project_root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/simple");
+        let (_fixture_temp, project_root) = crate::test_utils::fixture_to_temp("simple");
         let temp_dir = TempDir::new().unwrap();
         let output_dir = temp_dir.path().join("gambit_out");
 
@@ -208,7 +208,7 @@ mod tests {
         use tempfile::TempDir;
 
         let generator = GambitGenerator::new();
-        let project_root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/simple");
+        let (_fixture_temp, project_root) = crate::test_utils::fixture_to_temp("simple");
         let temp_dir = TempDir::new().unwrap();
         let output_dir = temp_dir.path().join("gambit_out");
 
@@ -234,7 +234,7 @@ mod tests {
         use tempfile::TempDir;
 
         let generator = GambitGenerator::new();
-        let project_root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/simple");
+        let (_fixture_temp, project_root) = crate::test_utils::fixture_to_temp("simple");
         let temp_dir = TempDir::new().unwrap();
         let output_dir = temp_dir.path().join("gambit_out");
 

@@ -1,6 +1,6 @@
 use assert_cmd::Command;
 use assert_fs::TempDir;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 pub fn fixture(name: &str) -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -34,7 +34,7 @@ impl TestRun {
     }
 }
 
-fn copy_dir_recursive(src: &std::path::Path, dst: &std::path::Path) -> std::io::Result<()> {
+fn copy_dir_recursive(src: &Path, dst: &Path) -> std::io::Result<()> {
     if !dst.exists() {
         std::fs::create_dir_all(dst)?;
     }
@@ -43,11 +43,14 @@ fn copy_dir_recursive(src: &std::path::Path, dst: &std::path::Path) -> std::io::
         let entry = entry?;
         let path = entry.path();
         let file_name = entry.file_name();
+        let file_name_str = file_name.to_string_lossy();
 
-        if file_name == ".git"
-            || file_name == "cache"
-            || file_name == "out"
-            || file_name == "gambit_out"
+        if file_name_str.starts_with('.')
+            || file_name_str == "target"
+            || file_name_str == "node_modules"
+            || file_name_str == "cache"
+            || file_name_str == "out"
+            || file_name_str == "gambit_out"
         {
             continue;
         }
