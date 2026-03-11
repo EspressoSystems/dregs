@@ -4,7 +4,7 @@ use mutr::config::{find_project_root, parse_foundry_toml, resolve_remappings};
 use mutr::generator::gambit::GambitGenerator;
 use mutr::generator::{GeneratorConfig, MutationGenerator};
 use mutr::report::Report;
-use mutr::runner::{run_forge_test, run_mutant};
+use mutr::runner::{list_forge_tests, run_forge_test, run_mutant};
 use std::path::PathBuf;
 use std::process;
 use std::time::Instant;
@@ -58,6 +58,9 @@ enum Commands {
             help = "Skip gambit's mutant validation (workaround for via_ir projects)"
         )]
         skip_validate: bool,
+
+        #[arg(last = true, help = "Extra arguments passed to forge test (after --)")]
+        forge_args: Vec<String>,
     },
 }
 
@@ -74,8 +77,17 @@ fn main() -> Result<()> {
             mutations,
             timeout: _timeout,
             skip_validate,
+            forge_args,
         } => {
-            run_mutation_testing(files, project, output, fail_under, mutations, skip_validate)?;
+            run_mutation_testing(
+                files,
+                project,
+                output,
+                fail_under,
+                mutations,
+                skip_validate,
+                &forge_args,
+            )?;
         }
     }
 
@@ -89,6 +101,7 @@ fn run_mutation_testing(
     fail_under: Option<f64>,
     mutations: Vec<String>,
     skip_validate: bool,
+    forge_args: &[String],
 ) -> Result<()> {
     let project_root = resolve_project_root(&files, &project)?;
 
@@ -125,11 +138,24 @@ fn run_mutation_testing(
         fc
     });
 
+    if !forge_args.is_empty() {
+        let test_names =
+            list_forge_tests(&project_root, forge_args).context("failed to list matching tests")?;
+        if test_names.is_empty() {
+            anyhow::bail!("no tests matched the provided filters");
+        }
+        eprintln!("Matched {} tests:", test_names.len());
+        for name in &test_names {
+            eprintln!("  {}", name);
+        }
+    }
+
     eprintln!("Running baseline tests...");
     let baseline_start = Instant::now();
-    let (has_failures, _) =
-        run_forge_test(&project_root).context("failed to run baseline tests")?;
-    if has_failures {
+    let result =
+        run_forge_test(&project_root, forge_args).context("failed to run baseline tests")?;
+    if result.failed {
+        eprint!("{}", result.stderr);
         anyhow::bail!("baseline tests failed - fix tests before running mutation testing");
     }
     eprintln!(
@@ -170,7 +196,8 @@ fn run_mutation_testing(
             mutant.line,
             mutant.operator
         );
-        let result = run_mutant(mutant, &project_root).context("failed to run mutant")?;
+        let result =
+            run_mutant(mutant, &project_root, forge_args).context("failed to run mutant")?;
         let status = if result.killed {
             format!(
                 "KILLED{}",

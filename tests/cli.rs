@@ -288,6 +288,37 @@ fn test_run_file_without_project_root_falls_back() {
 }
 
 #[test]
+fn test_run_with_forge_args_shows_matched_tests() {
+    let test_run = common::TestRun::from_fixture("simple");
+
+    test_run
+        .mutr_cmd()
+        .arg("--")
+        .arg("--match-test")
+        .arg("Increment")
+        .assert()
+        .success()
+        .stderr(predicate::str::contains("Matched"))
+        .stderr(predicate::str::contains("CounterTest::test_Increment"));
+}
+
+#[test]
+fn test_run_with_forge_args_no_match_fails() {
+    let test_run = common::TestRun::from_fixture("simple");
+
+    test_run
+        .mutr_cmd()
+        .arg("--")
+        .arg("--match-test")
+        .arg("NonexistentTest")
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains(
+            "no tests matched the provided filters",
+        ));
+}
+
+#[test]
 fn test_run_with_no_mutants_generated() {
     use assert_fs::prelude::*;
 

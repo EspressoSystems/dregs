@@ -21,6 +21,14 @@ pub enum RunnerError {
 
 pub type Result<T> = std::result::Result<T, RunnerError>;
 
+#[derive(Debug)]
+pub struct ForgeTestResult {
+    pub failed: bool,
+    pub killed_by: Option<String>,
+    pub stdout: String,
+    pub stderr: String,
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct TestResult {
     pub mutant_id: u32,
@@ -29,7 +37,11 @@ pub struct TestResult {
     pub duration: Duration,
 }
 
-pub fn run_mutant(mutant: &Mutant, project_root: &Path) -> Result<TestResult> {
+pub fn run_mutant(
+    mutant: &Mutant,
+    project_root: &Path,
+    forge_args: &[String],
+) -> Result<TestResult> {
     let start = Instant::now();
 
     let temp_dir = TempDir::new()?;
@@ -38,7 +50,9 @@ pub fn run_mutant(mutant: &Mutant, project_root: &Path) -> Result<TestResult> {
     copy_project_to_temp(project_root, temp_project)?;
     apply_mutant_to_project(mutant, temp_project)?;
 
-    let (killed, killed_by) = run_forge_test(temp_project)?;
+    let forge_result = run_forge_test(temp_project, forge_args)?;
+    let killed = forge_result.failed;
+    let killed_by = forge_result.killed_by;
 
     let duration = start.elapsed();
 
@@ -105,18 +119,24 @@ fn apply_mutant_to_project(mutant: &Mutant, temp_project: &Path) -> Result<()> {
     Ok(())
 }
 
-pub fn run_forge_test(project_root: &Path) -> Result<(bool, Option<String>)> {
+pub fn run_forge_test(project_root: &Path, extra_args: &[String]) -> Result<ForgeTestResult> {
     let output = Command::new("forge")
         .arg("test")
         .arg("--json")
+        .args(extra_args)
         .current_dir(project_root)
         .output()?;
 
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    let stderr = String::from_utf8_lossy(&output.stderr);
+    let stdout = String::from_utf8_lossy(&output.stdout).into_owned();
+    let stderr = String::from_utf8_lossy(&output.stderr).into_owned();
 
     if output.status.success() {
-        return Ok((false, None));
+        return Ok(ForgeTestResult {
+            failed: false,
+            killed_by: None,
+            stdout,
+            stderr,
+        });
     }
 
     // Check if this is a compilation/setup error vs test failure
@@ -132,7 +152,65 @@ pub fn run_forge_test(project_root: &Path) -> Result<(bool, Option<String>)> {
 
     let killed_by = parse_failed_test_from_output(&stdout, &stderr);
 
-    Ok((true, killed_by))
+    Ok(ForgeTestResult {
+        failed: true,
+        killed_by,
+        stdout,
+        stderr,
+    })
+}
+
+pub fn list_forge_tests(project_root: &Path, extra_args: &[String]) -> Result<Vec<String>> {
+    let output = Command::new("forge")
+        .arg("test")
+        .arg("--json")
+        .arg("--list")
+        .args(extra_args)
+        .current_dir(project_root)
+        .output()?;
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(RunnerError::TestExecution(format!(
+            "forge test --list failed:\nstdout: {}\nstderr: {}",
+            stdout, stderr
+        )));
+    }
+
+    parse_list_output(&stdout).map_err(RunnerError::TestExecution)
+}
+
+fn parse_list_output(stdout: &str) -> std::result::Result<Vec<String>, String> {
+    let json: serde_json::Value =
+        serde_json::from_str(stdout).map_err(|e| format!("failed to parse JSON: {}", e))?;
+
+    let obj = json
+        .as_object()
+        .ok_or_else(|| "expected JSON object".to_string())?;
+
+    let mut names = Vec::new();
+    for (_file_path, contracts) in obj {
+        let Some(contracts_obj) = contracts.as_object() else {
+            continue;
+        };
+        for (contract_name, tests) in contracts_obj {
+            let Some(tests_arr) = tests.as_array() else {
+                continue;
+            };
+            for test in tests_arr {
+                if let Some(test_name) = test.as_str() {
+                    names.push(format!("{}::{}", contract_name, test_name));
+                }
+            }
+        }
+    }
+    if names.is_empty() && !obj.is_empty() {
+        return Err("JSON contained entries but no test names could be extracted".to_string());
+    }
+    names.sort();
+    Ok(names)
 }
 
 fn parse_failed_test_from_output(stdout: &str, stderr: &str) -> Option<String> {
@@ -450,9 +528,9 @@ mod tests {
     #[test]
     fn test_run_forge_test_with_passing_tests() {
         let project_root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/simple");
-        let (killed, killed_by) = run_forge_test(&project_root).unwrap();
-        assert!(!killed);
-        assert!(killed_by.is_none());
+        let result = run_forge_test(&project_root, &[]).unwrap();
+        assert!(!result.failed);
+        assert!(result.killed_by.is_none());
     }
 
     #[test]
@@ -496,8 +574,8 @@ contract FailTest {
             )
             .unwrap();
 
-        let (killed, _killed_by) = run_forge_test(project.path()).unwrap();
-        assert!(killed);
+        let result = run_forge_test(project.path(), &[]).unwrap();
+        assert!(result.failed);
     }
 
     #[test]
@@ -522,8 +600,101 @@ solc = "0.8.30"
             .write_str("this is not valid solidity code")
             .unwrap();
 
-        let result = run_forge_test(project.path());
+        let result = run_forge_test(project.path(), &[]);
         pretty_assertions::assert_matches!(result, Err(RunnerError::TestExecution(_)));
+    }
+
+    #[test]
+    fn test_parse_list_output() {
+        let json_output = r#"{"test/Counter.t.sol":{"CounterTest":["testIncrement","testDecrement"]},"test/Other.t.sol":{"OtherTest":["testOther"]}}"#;
+        let result = parse_list_output(json_output).unwrap();
+        assert_eq!(
+            result,
+            vec![
+                "CounterTest::testDecrement",
+                "CounterTest::testIncrement",
+                "OtherTest::testOther",
+            ]
+        );
+    }
+
+    #[test]
+    fn test_parse_list_output_empty() {
+        let result = parse_list_output("{}").unwrap();
+        assert!(result.is_empty());
+    }
+
+    #[test]
+    fn test_parse_list_output_invalid_json() {
+        let result = parse_list_output("not json at all");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_parse_list_output_unexpected_structure_not_object() {
+        let json_output = r#"{"test/Counter.t.sol": "not_an_object"}"#;
+        let result = parse_list_output(json_output);
+        assert!(result.is_err());
+        assert!(
+            result
+                .unwrap_err()
+                .contains("no test names could be extracted")
+        );
+    }
+
+    #[test]
+    fn test_parse_list_output_unexpected_structure_not_array() {
+        let json_output = r#"{"test/Counter.t.sol": {"CounterTest": "not_an_array"}}"#;
+        let result = parse_list_output(json_output);
+        assert!(result.is_err());
+        assert!(
+            result
+                .unwrap_err()
+                .contains("no test names could be extracted")
+        );
+    }
+
+    #[test]
+    fn test_list_forge_tests_compilation_error() {
+        use assert_fs::prelude::*;
+
+        let project = assert_fs::TempDir::new().unwrap();
+        project
+            .child("foundry.toml")
+            .write_str("[profile.default]\nsrc = \"src\"\nsolc = \"0.8.30\"\n")
+            .unwrap();
+        project
+            .child("src/Invalid.sol")
+            .write_str("this is not valid solidity")
+            .unwrap();
+
+        let result = list_forge_tests(project.path(), &[]);
+        pretty_assertions::assert_matches!(result, Err(RunnerError::TestExecution(_)));
+    }
+
+    #[test]
+    fn test_list_forge_tests_integration() {
+        let project_root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/simple");
+        let result = list_forge_tests(&project_root, &[]).unwrap();
+        assert!(result.contains(&"CounterTest::test_Increment".to_string()));
+        assert!(result.contains(&"CounterTest::test_Decrement".to_string()));
+        assert!(result.contains(&"CounterTest::test_SetNumber".to_string()));
+    }
+
+    #[test]
+    fn test_list_forge_tests_with_filter() {
+        let project_root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/simple");
+        let args = vec!["--match-test".to_string(), "Increment".to_string()];
+        let result = list_forge_tests(&project_root, &args).unwrap();
+        assert_eq!(result, vec!["CounterTest::test_Increment"]);
+    }
+
+    #[test]
+    fn test_run_forge_test_with_filter() {
+        let project_root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/simple");
+        let args = vec!["--match-test".to_string(), "Increment".to_string()];
+        let result = run_forge_test(&project_root, &args).unwrap();
+        assert!(!result.failed);
     }
 
     #[test]
@@ -549,7 +720,7 @@ solc = "0.8.30"
         let mutants = generator.generate(&config).unwrap();
         assert!(!mutants.is_empty());
 
-        let result = run_mutant(&mutants[0], &project_root).unwrap();
+        let result = run_mutant(&mutants[0], &project_root, &[]).unwrap();
         assert_eq!(result.mutant_id, 1);
         assert!(result.killed);
         assert!(result.killed_by.as_ref().unwrap().contains("CounterTest"));
