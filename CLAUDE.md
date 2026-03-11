@@ -94,7 +94,7 @@ Use semantic commit messages: `type: description`
 mutr
 ├── src/
 │   ├── main.rs           # CLI entry point, progress output
-│   ├── lib.rs            # Library root
+│   ├── lib.rs            # Library root, test utilities
 │   ├── config.rs         # foundry.toml parsing, project root detection, remapping resolution
 │   ├── generator/
 │   │   ├── mod.rs        # Generator trait
