@@ -1,3 +1,4 @@
+use crate::config::FoundryConfig;
 use std::path::PathBuf;
 use thiserror::Error;
 
@@ -31,6 +32,8 @@ pub struct GeneratorConfig {
     pub files: Vec<PathBuf>,
     pub operators: Vec<String>,
     pub output_dir: PathBuf,
+    pub foundry_config: Option<FoundryConfig>,
+    pub skip_validate: bool,
 }
 
 pub trait MutationGenerator {
@@ -65,6 +68,8 @@ mod tests {
             files: vec![PathBuf::from("src/Counter.sol")],
             operators: vec!["binary-op-mutation".to_string()],
             output_dir: PathBuf::from("gambit_out"),
+            foundry_config: None,
+            skip_validate: false,
         };
         assert_eq!(config.files.len(), 1);
         assert_eq!(config.operators.len(), 1);

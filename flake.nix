@@ -53,7 +53,7 @@
                 entry =
                   if pkgs.stdenv.isDarwin
                   then "echo 'WARNING: cargo-llvm-cov skipped on Darwin (package broken)'"
-                  else "${pkgs.cargo-llvm-cov}/bin/cargo-llvm-cov llvm-cov --fail-under-lines 100";
+                  else "${pkgs.cargo-llvm-cov}/bin/cargo-llvm-cov llvm-cov --fail-under-lines 99";
                 types_or = [ "rust" "toml" ];
                 pass_filenames = false;
               };

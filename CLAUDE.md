@@ -21,15 +21,22 @@ A Rust CLI tool that runs mutation testing for Solidity projects using Foundry. 
 - [x] Export packages.default and apps.default
 - [x] Usage: `nix run github:sveitser/mutr -- run --project .`
 
-### v0.3 - Parallel Execution
+### v0.3 - Foundry.toml Configuration (Complete)
+- [x] Parse foundry.toml for project settings
+- [x] Auto-detect project root from file paths
+- [x] Pass optimizer, evm_version, remappings to gambit
+- [x] Add --skip-validate flag (workaround for via_ir projects)
+- [x] Note: via_ir not supported by gambit upstream
+
+### v0.4 - Parallel Execution
 - [ ] Run multiple mutants concurrently
 - [ ] Configurable worker count
 
-### v0.4 - Incremental Testing
+### v0.5 - Incremental Testing
 - [ ] Cache test results by mutant hash
 - [ ] Only re-test changed mutants
 
-### v0.5 - Coverage Filtering
+### v0.6 - Coverage Filtering
 - [ ] Parse forge coverage output
 - [ ] Only mutate lines covered by tests
 

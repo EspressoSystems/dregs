@@ -1,5 +1,6 @@
 use anyhow::{Context, Result};
 use clap::{Parser, Subcommand};
+use mutr::config::{find_project_root, parse_foundry_toml};
 use mutr::generator::gambit::GambitGenerator;
 use mutr::generator::{GeneratorConfig, MutationGenerator};
 use mutr::report::Report;
@@ -50,6 +51,12 @@ enum Commands {
             help = "Test timeout per mutant in seconds"
         )]
         timeout: u64,
+
+        #[arg(
+            long,
+            help = "Skip gambit's mutant validation (workaround for via_ir projects)"
+        )]
+        skip_validate: bool,
     },
 }
 
@@ -62,11 +69,12 @@ fn main() -> Result<()> {
             project,
             output,
             fail_under,
-            solc,
+            solc: _solc,
             mutations,
             timeout: _timeout,
+            skip_validate,
         } => {
-            run_mutation_testing(files, project, output, fail_under, solc, mutations)?;
+            run_mutation_testing(files, project, output, fail_under, mutations, skip_validate)?;
         }
     }
 
@@ -78,15 +86,13 @@ fn run_mutation_testing(
     project: PathBuf,
     output: Option<PathBuf>,
     fail_under: Option<f64>,
-    _solc: Option<PathBuf>,
     mutations: Vec<String>,
+    skip_validate: bool,
 ) -> Result<()> {
-    if !project.exists() {
-        anyhow::bail!("invalid project path: {}", project.display());
-    }
+    let project_root = resolve_project_root(&files, &project)?;
 
     let target_files = if files.is_empty() {
-        discover_solidity_files(&project)?
+        discover_solidity_files(&project_root)?
     } else {
         files
             .into_iter()
@@ -94,7 +100,7 @@ fn run_mutation_testing(
                 if f.is_absolute() {
                     Ok(f)
                 } else {
-                    project
+                    project_root
                         .join(&f)
                         .canonicalize()
                         .with_context(|| format!("failed to resolve file path: {}", f.display()))
@@ -107,12 +113,17 @@ fn run_mutation_testing(
         anyhow::bail!("no Solidity files found to mutate");
     }
 
-    let output_dir = project.join("gambit_out");
+    let foundry_config =
+        parse_foundry_toml(&project_root).context("failed to parse foundry.toml")?;
+
+    let output_dir = project_root.join("gambit_out");
     let config = GeneratorConfig {
-        project_root: project.clone(),
+        project_root: project_root.clone(),
         files: target_files,
         operators: mutations,
         output_dir,
+        foundry_config,
+        skip_validate,
     };
 
     let generator = GambitGenerator::new();
@@ -127,7 +138,7 @@ fn run_mutation_testing(
 
     let mut results = Vec::new();
     for mutant in &mutants {
-        let result = run_mutant(mutant, &project).context("failed to run mutant")?;
+        let result = run_mutant(mutant, &project_root).context("failed to run mutant")?;
         results.push(result);
     }
 
@@ -153,6 +164,51 @@ fn run_mutation_testing(
     }
 
     Ok(())
+}
+
+fn resolve_project_root(files: &[PathBuf], explicit_project: &PathBuf) -> Result<PathBuf> {
+    let default_project = PathBuf::from(".");
+    let is_explicit = explicit_project != &default_project;
+
+    if is_explicit || files.is_empty() {
+        if !explicit_project.exists() {
+            anyhow::bail!("invalid project path: {}", explicit_project.display());
+        }
+        return explicit_project
+            .canonicalize()
+            .context("failed to canonicalize project path");
+    }
+
+    let first_file = &files[0];
+    let first_file_abs = if first_file.is_absolute() {
+        first_file.clone()
+    } else {
+        std::env::current_dir()?.join(first_file)
+    };
+
+    if let Some(root) = find_project_root(&first_file_abs) {
+        for file in files.iter().skip(1) {
+            let file_abs = if file.is_absolute() {
+                file.clone()
+            } else {
+                std::env::current_dir()?.join(file)
+            };
+            if let Some(other_root) = find_project_root(&file_abs)
+                && other_root != root
+            {
+                anyhow::bail!(
+                    "files have different project roots: {} vs {}",
+                    root.display(),
+                    other_root.display()
+                );
+            }
+        }
+        return Ok(root);
+    }
+
+    explicit_project
+        .canonicalize()
+        .context("failed to canonicalize project path")
 }
 
 fn discover_solidity_files(project_root: &std::path::Path) -> Result<Vec<PathBuf>> {

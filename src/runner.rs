@@ -542,6 +542,8 @@ solc = "0.8.30"
             files: vec![project_root.join("src/Counter.sol")],
             operators: vec![],
             output_dir,
+            foundry_config: None,
+            skip_validate: false,
         };
 
         let mutants = generator.generate(&config).unwrap();

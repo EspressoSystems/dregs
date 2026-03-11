@@ -171,6 +171,123 @@ fn test_discover_files_in_src_directory() {
 }
 
 #[test]
+fn test_run_auto_detect_project_root_from_files() {
+    let test_run = common::TestRun::from_fixture("simple");
+    let file_path = test_run.project_path().join("src/Counter.sol");
+
+    // Pass files without --project; the default "." won't match since we don't cd there,
+    // so resolve_project_root should auto-detect from the file's foundry.toml
+    mutr_cmd()
+        .arg("run")
+        .arg(file_path)
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Mutation score"));
+}
+
+#[test]
+fn test_run_different_project_roots_fails() {
+    use assert_fs::prelude::*;
+
+    // Create two separate foundry projects
+    let temp_a = TempDir::new().unwrap();
+    temp_a
+        .child("foundry.toml")
+        .write_str("[profile.default]\nsrc = \"src\"\n")
+        .unwrap();
+    temp_a.child("src/A.sol").touch().unwrap();
+
+    let temp_b = TempDir::new().unwrap();
+    temp_b
+        .child("foundry.toml")
+        .write_str("[profile.default]\nsrc = \"src\"\n")
+        .unwrap();
+    temp_b.child("src/B.sol").touch().unwrap();
+
+    let file_a = temp_a.path().join("src/A.sol");
+    let file_b = temp_b.path().join("src/B.sol");
+
+    mutr_cmd()
+        .arg("run")
+        .arg(&file_a)
+        .arg(&file_b)
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("different project roots"));
+}
+
+#[test]
+fn test_run_auto_detect_project_root_from_relative_files() {
+    let test_run = common::TestRun::from_fixture("simple");
+
+    // Use relative path with current_dir set to the project
+    mutr_cmd()
+        .current_dir(test_run.project_path())
+        .arg("run")
+        .arg("src/Counter.sol")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Mutation score"));
+}
+
+#[test]
+fn test_run_different_project_roots_relative_files_fails() {
+    use assert_fs::prelude::*;
+
+    // Create two projects in separate subdirectories
+    let temp = TempDir::new().unwrap();
+
+    let proj_a = temp.child("proj_a");
+    proj_a.create_dir_all().unwrap();
+    proj_a
+        .child("foundry.toml")
+        .write_str("[profile.default]\nsrc = \"src\"\n")
+        .unwrap();
+    proj_a.child("src/A.sol").touch().unwrap();
+
+    let proj_b = temp.child("proj_b");
+    proj_b.create_dir_all().unwrap();
+    proj_b
+        .child("foundry.toml")
+        .write_str("[profile.default]\nsrc = \"src\"\n")
+        .unwrap();
+    proj_b.child("src/B.sol").touch().unwrap();
+
+    // Use relative paths from the parent temp dir
+    mutr_cmd()
+        .current_dir(temp.path())
+        .arg("run")
+        .arg("proj_a/src/A.sol")
+        .arg("proj_b/src/B.sol")
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("different project roots"));
+}
+
+#[test]
+fn test_run_file_without_project_root_falls_back() {
+    use assert_fs::prelude::*;
+
+    // Create a sol file with no foundry.toml anywhere above it
+    let temp = TempDir::new().unwrap();
+    temp.child("src/Contract.sol")
+        .write_str(
+            "// SPDX-License-Identifier: MIT\npragma solidity ^0.8.0;\ncontract C { function f() public {} }\n",
+        )
+        .unwrap();
+
+    // No foundry.toml exists -> find_project_root returns None -> falls back to canonicalize(".")
+    // The contract has no mutable operations so gambit generates no mutants.
+    mutr_cmd()
+        .current_dir(temp.path())
+        .arg("run")
+        .arg("src/Contract.sol")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("No mutants generated"));
+}
+
+#[test]
 fn test_run_with_no_mutants_generated() {
     use assert_fs::prelude::*;
 
