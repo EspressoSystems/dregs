@@ -1,6 +1,6 @@
 use anyhow::{Context, Result};
 use clap::{Parser, Subcommand};
-use mutr::config::{find_project_root, parse_foundry_toml};
+use mutr::config::{find_project_root, parse_foundry_toml, resolve_remappings};
 use mutr::generator::gambit::GambitGenerator;
 use mutr::generator::{GeneratorConfig, MutationGenerator};
 use mutr::report::Report;
@@ -116,6 +116,14 @@ fn run_mutation_testing(
     let foundry_config =
         parse_foundry_toml(&project_root).context("failed to parse foundry.toml")?;
 
+    // Resolve remappings via forge if not explicitly set in foundry.toml
+    let foundry_config = foundry_config.map(|mut fc| {
+        if fc.remappings.is_empty() {
+            fc.remappings = resolve_remappings(&project_root);
+        }
+        fc
+    });
+
     let output_dir = project_root.join("gambit_out");
     let config = GeneratorConfig {
         project_root: project_root.clone(),
@@ -127,6 +135,7 @@ fn run_mutation_testing(
     };
 
     let generator = GambitGenerator::new();
+    eprintln!("Generating mutants...");
     let mutants = generator
         .generate(&config)
         .context("failed to generate mutants")?;
@@ -136,9 +145,32 @@ fn run_mutation_testing(
         return Ok(());
     }
 
+    eprintln!("Generated {} mutants", mutants.len());
+
     let mut results = Vec::new();
-    for mutant in &mutants {
+    for (i, mutant) in mutants.iter().enumerate() {
+        eprintln!(
+            "[{}/{}] {}:{} {}",
+            i + 1,
+            mutants.len(),
+            mutant.relative_source_path.display(),
+            mutant.line,
+            mutant.operator
+        );
         let result = run_mutant(mutant, &project_root).context("failed to run mutant")?;
+        let status = if result.killed {
+            format!(
+                "KILLED{}",
+                result
+                    .killed_by
+                    .as_deref()
+                    .map(|t| format!(" by {}", t))
+                    .unwrap_or_default()
+            )
+        } else {
+            "SURVIVED".to_string()
+        };
+        eprintln!("  -> {} ({:.1}s)", status, result.duration.as_secs_f64());
         results.push(result);
     }
 

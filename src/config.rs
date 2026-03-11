@@ -2,6 +2,7 @@ use serde::Deserialize;
 use std::collections::HashMap;
 use std::fs;
 use std::path::Path;
+use std::process::Command;
 use thiserror::Error;
 
 #[derive(Error, Debug)]
@@ -58,6 +59,26 @@ pub fn parse_foundry_toml(project_root: &Path) -> Result<Option<FoundryConfig>> 
         via_ir: profile.via_ir.unwrap_or(false),
         remappings: profile.remappings.unwrap_or_default(),
     }))
+}
+
+pub fn resolve_remappings(project_root: &Path) -> Vec<String> {
+    let output = Command::new("forge")
+        .arg("remappings")
+        .arg("--root")
+        .arg(project_root)
+        .output();
+
+    match output {
+        Ok(out) if out.status.success() => String::from_utf8_lossy(&out.stdout)
+            .lines()
+            .filter(|l| !l.is_empty())
+            .map(String::from)
+            .collect(),
+        _ => {
+            eprintln!("Warning: failed to resolve remappings via `forge remappings`");
+            Vec::new()
+        }
+    }
 }
 
 pub fn find_project_root(file: &Path) -> Option<std::path::PathBuf> {
