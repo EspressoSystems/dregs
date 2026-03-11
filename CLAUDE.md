@@ -4,7 +4,7 @@
 
 A Rust CLI tool that runs mutation testing for Solidity projects using Foundry. Uses Gambit for mutation generation with an abstraction layer for future generator support.
 
-## Status: v0.3 Complete
+## Status: v0.4 Complete
 
 ## Roadmap
 
@@ -35,10 +35,15 @@ A Rust CLI tool that runs mutation testing for Solidity projects using Foundry. 
 - [x] Note: via_ir not supported by gambit upstream
 - [x] Note: gambit expects solc binary path, version strings from foundry.toml are ignored with warning
 
-### v0.4 - Parallel Execution
+### v0.4 - Parallel Execution & CI Sharding (Complete)
 
-- [ ] Run multiple mutants concurrently
-- [ ] Configurable worker count
+- [x] Run multiple mutants concurrently with rayon
+- [x] Configurable `--workers N` flag (default 1)
+- [x] `generate` subcommand: produce manifest directory with mutant files
+- [x] `test` subcommand: read manifest, apply `--partition slice:M/N`, run subset, output partial results
+- [x] `report` subcommand: merge partial result files, print summary, `--fail-under` threshold
+- [x] Manifest format: JSON manifest + mutant files with relative paths
+- [x] Partition: round-robin assignment by mutant ID
 
 ### v0.5 - Incremental Testing
 
@@ -93,14 +98,16 @@ Use semantic commit messages: `type: description`
 ```
 mutr
 ├── src/
-│   ├── main.rs           # CLI entry point, progress output
+│   ├── main.rs           # CLI entry point, subcommands (run/generate/test/report)
 │   ├── lib.rs            # Library root, test utilities
 │   ├── config.rs         # foundry.toml parsing, project root detection, remapping resolution
 │   ├── generator/
-│   │   ├── mod.rs        # Generator trait
+│   │   ├── mod.rs        # Generator trait, Mutant type
 │   │   └── gambit.rs     # Gambit implementation
+│   ├── manifest.rs       # Manifest read/write for CI sharding
+│   ├── partition.rs      # Round-robin partition for CI sharding
 │   ├── runner.rs         # Test runner (forge test)
-│   └── report.rs         # Results reporting
+│   └── report.rs         # Results reporting, merge partial results
 ├── Cargo.toml
 ├── justfile              # Common dev commands
 └── CLAUDE.md             # Roadmap
@@ -113,6 +120,7 @@ mutr
 - clap (derive): CLI parsing
 - gambit (git v1.0.6): Mutation generation library
 - glob: File discovery
+- rayon: Parallel mutant execution
 - serde + serde_json: Config and report serialization
 - tempfile: Temp directory management
 - thiserror: Typed errors for testable error paths
@@ -144,3 +152,6 @@ mutr
 - **Forge for remappings**: Use `forge remappings --root` to resolve auto-detected remappings from libs directories
 - **thiserror for internal errors**: Typed errors for testable code paths
 - **anyhow at boundaries**: Only use anyhow in main.rs for unhandled errors
+- **rayon for parallelism**: Local thread pool per run, not global, to support configurable worker count
+- **ID-based partitioning**: Round-robin by mutant ID (contiguous 1-based from gambit) for deterministic shard assignment
+- **Manifest with relative paths**: Stored relative to manifest dir, resolved on read for portability across CI runners
