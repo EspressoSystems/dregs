@@ -1,9 +1,10 @@
 use crate::generator::Mutant;
 use crate::runner::TestResult;
 use serde::{Deserialize, Serialize};
+use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::io::Write;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use thiserror::Error;
 
 #[derive(Error, Debug)]
@@ -47,13 +48,47 @@ impl Report {
         }
     }
 
+    /// Merge multiple partial result files into combined results.
+    pub fn merge(result_files: &[PathBuf]) -> Result<Vec<TestResult>> {
+        if result_files.is_empty() {
+            return Err(ReportError::Generation(
+                "no result files provided".to_string(),
+            ));
+        }
+
+        let mut all_results = Vec::new();
+        let mut seen_ids = HashSet::new();
+
+        for file in result_files {
+            let content = fs::read_to_string(file)
+                .map_err(|e| ReportError::Generation(format!("{}: {}", file.display(), e)))?;
+            let results: Vec<TestResult> = serde_json::from_str(&content)
+                .map_err(|e| ReportError::Generation(format!("{}: {}", file.display(), e)))?;
+            for result in results {
+                if !seen_ids.insert(result.mutant_id) {
+                    return Err(ReportError::Generation(format!(
+                        "duplicate mutant_id {} in {}",
+                        result.mutant_id,
+                        file.display()
+                    )));
+                }
+                all_results.push(result);
+            }
+        }
+
+        all_results.sort_by_key(|r| r.mutant_id);
+        Ok(all_results)
+    }
+
     pub fn print_summary(&self, mutants: &[Mutant]) {
         self.write_summary(&mut std::io::stdout(), mutants)
             .expect("failed to write summary to stdout");
     }
 
     pub fn write_summary(&self, w: &mut impl Write, mutants: &[Mutant]) -> std::io::Result<()> {
-        for (result, mutant) in self.results.iter().zip(mutants.iter()) {
+        let mutant_map: HashMap<u32, &Mutant> = mutants.iter().map(|m| (m.id, m)).collect();
+
+        for result in &self.results {
             let status = if result.killed {
                 format!(
                     "KILLED by {}",
@@ -63,16 +98,24 @@ impl Report {
                 "SURVIVED".to_string()
             };
 
-            writeln!(
-                w,
-                "[{}/{}] {}:{} {}: {}",
-                result.mutant_id,
-                self.total_mutants,
-                mutant.source_path.display(),
-                mutant.line,
-                mutant.operator,
-                status
-            )?;
+            if let Some(mutant) = mutant_map.get(&result.mutant_id) {
+                writeln!(
+                    w,
+                    "[{}/{}] {}:{} {}: {}",
+                    result.mutant_id,
+                    self.total_mutants,
+                    mutant.source_path.display(),
+                    mutant.line,
+                    mutant.operator,
+                    status
+                )?;
+            } else {
+                writeln!(
+                    w,
+                    "[{}/{}]: {}",
+                    result.mutant_id, self.total_mutants, status
+                )?;
+            }
         }
 
         writeln!(
@@ -85,8 +128,10 @@ impl Report {
 
         if self.survived_mutants > 0 {
             writeln!(w, "Surviving mutants:")?;
-            for (result, mutant) in self.results.iter().zip(mutants.iter()) {
-                if !result.killed {
+            for result in &self.results {
+                if !result.killed
+                    && let Some(mutant) = mutant_map.get(&result.mutant_id)
+                {
                     writeln!(
                         w,
                         "  [{}] {}:{} {}",
@@ -103,7 +148,7 @@ impl Report {
         Ok(())
     }
 
-    pub fn write_json(&self, path: &PathBuf) -> Result<()> {
+    pub fn write_json(&self, path: &Path) -> Result<()> {
         let json = serde_json::to_string_pretty(self)?;
         fs::write(path, json)?;
         Ok(())
@@ -406,5 +451,84 @@ mod tests {
         let mut buf = [0u8; 0];
         let result = report.write_summary(&mut buf.as_mut_slice(), &mutants);
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_merge_ok() {
+        use assert_fs::TempDir;
+
+        let dir = TempDir::new().unwrap();
+
+        let file1 = dir.path().join("part1.json");
+        let file2 = dir.path().join("part2.json");
+
+        let results1 = vec![TestResult {
+            mutant_id: 3,
+            killed: true,
+            killed_by: Some("Test1".to_string()),
+            duration: Duration::from_secs(1),
+        }];
+        let results2 = vec![TestResult {
+            mutant_id: 1,
+            killed: false,
+            killed_by: None,
+            duration: Duration::from_millis(500),
+        }];
+
+        std::fs::write(&file1, serde_json::to_string(&results1).unwrap()).unwrap();
+        std::fs::write(&file2, serde_json::to_string(&results2).unwrap()).unwrap();
+
+        let merged = Report::merge(&[file1, file2]).unwrap();
+        assert_eq!(merged.len(), 2);
+        // Sorted by mutant_id
+        assert_eq!(merged[0].mutant_id, 1);
+        assert_eq!(merged[1].mutant_id, 3);
+    }
+
+    #[test]
+    fn test_write_summary_unknown_mutant_id() {
+        let results = vec![TestResult {
+            mutant_id: 999,
+            killed: true,
+            killed_by: Some("SomeTest".to_string()),
+            duration: Duration::from_secs(1),
+        }];
+
+        let report = Report::new(results);
+        let mut output = Vec::new();
+        // Pass empty mutants so mutant_map won't find id 999
+        report.write_summary(&mut output, &[]).unwrap();
+        let output = String::from_utf8(output).unwrap();
+        assert!(output.contains("[999/1]: KILLED"));
+    }
+
+    #[test]
+    fn test_merge_no_files_fails() {
+        let result = Report::merge(&[]);
+        pretty_assertions::assert_matches!(result, Err(ReportError::Generation(_)));
+    }
+
+    #[test]
+    fn test_merge_duplicate_ids_fails() {
+        use assert_fs::TempDir;
+
+        let dir = TempDir::new().unwrap();
+
+        let file1 = dir.path().join("part1.json");
+        let file2 = dir.path().join("part2.json");
+
+        let results = vec![TestResult {
+            mutant_id: 1,
+            killed: true,
+            killed_by: Some("Test1".to_string()),
+            duration: Duration::from_secs(1),
+        }];
+
+        let json = serde_json::to_string(&results).unwrap();
+        std::fs::write(&file1, &json).unwrap();
+        std::fs::write(&file2, &json).unwrap();
+
+        let result = Report::merge(&[file1, file2]);
+        pretty_assertions::assert_matches!(result, Err(ReportError::Generation(_)));
     }
 }

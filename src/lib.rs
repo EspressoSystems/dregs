@@ -1,5 +1,7 @@
 pub mod config;
 pub mod generator;
+pub mod manifest;
+pub mod partition;
 pub mod report;
 pub mod runner;
 

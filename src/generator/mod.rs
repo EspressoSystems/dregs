@@ -1,4 +1,5 @@
 use crate::config::FoundryConfig;
+use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use thiserror::Error;
 
@@ -14,7 +15,7 @@ pub enum GeneratorError {
 
 pub type Result<T> = std::result::Result<T, GeneratorError>;
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Mutant {
     pub id: u32,
     pub source_path: PathBuf,
