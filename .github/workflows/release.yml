@@ -18,16 +18,23 @@ jobs:
         include:
           - os: ubuntu-latest
             artifact: mutr-linux-amd64
+            target: x86_64-unknown-linux-musl
           - os: ubuntu-24.04-arm
             artifact: mutr-linux-aarch64
+            target: aarch64-unknown-linux-musl
           - os: macos-latest
             artifact: mutr-macos-aarch64
+            target: aarch64-apple-darwin
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v6
+      - name: Install musl-tools
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y musl-tools
+      - run: rustup target add ${{ matrix.target }}
       - uses: Swatinem/rust-cache@v2
-      - run: cargo build --release
-      - run: cp target/release/mutr ${{ matrix.artifact }}
+      - run: cargo build --release --target ${{ matrix.target }}
+      - run: cp target/${{ matrix.target }}/release/mutr ${{ matrix.artifact }}
       - uses: actions/upload-artifact@v7
         with:
           name: ${{ matrix.artifact }}
