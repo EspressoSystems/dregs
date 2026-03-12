@@ -6,18 +6,18 @@ use predicates::prelude::*;
 
 // cargo_bin is deprecated for custom build-dir support we don't use
 #[allow(deprecated)]
-fn mutr_cmd() -> Command {
-    Command::cargo_bin("mutr").unwrap()
+fn dregs_cmd() -> Command {
+    Command::cargo_bin("dregs").unwrap()
 }
 
 #[test]
 fn test_help() {
-    mutr_cmd().arg("--help").assert().success();
+    dregs_cmd().arg("--help").assert().success();
 }
 
 #[test]
 fn test_run_help() {
-    mutr_cmd().arg("run").arg("--help").assert().success();
+    dregs_cmd().arg("run").arg("--help").assert().success();
 }
 
 #[test]
@@ -33,7 +33,7 @@ fn test_fixture_exists() {
 fn test_run_simple_project() {
     let test_run = common::TestRun::from_fixture("simple");
     test_run
-        .mutr_cmd()
+        .dregs_cmd()
         .assert()
         .success()
         .stdout(predicate::str::contains("Mutation score"));
@@ -45,7 +45,7 @@ fn test_run_with_explicit_files() {
     let file_path = test_run.project_path().join("src/Counter.sol");
 
     test_run
-        .mutr_cmd()
+        .dregs_cmd()
         .arg(file_path)
         .assert()
         .success()
@@ -59,7 +59,7 @@ fn test_run_with_json_output() {
     let output_path = temp.path().join("report.json");
 
     test_run
-        .mutr_cmd()
+        .dregs_cmd()
         .arg("--output")
         .arg(&output_path)
         .assert()
@@ -77,7 +77,7 @@ fn test_run_with_fail_under_passing() {
     let test_run = common::TestRun::from_fixture("simple");
 
     test_run
-        .mutr_cmd()
+        .dregs_cmd()
         .arg("--fail-under")
         .arg("0.0")
         .assert()
@@ -89,7 +89,7 @@ fn test_run_with_fail_under_failing() {
     let test_run = common::TestRun::from_fixture("simple");
 
     test_run
-        .mutr_cmd()
+        .dregs_cmd()
         .arg("--fail-under")
         .arg("1.0")
         .assert()
@@ -99,7 +99,7 @@ fn test_run_with_fail_under_failing() {
 
 #[test]
 fn test_run_with_invalid_project_path() {
-    mutr_cmd()
+    dregs_cmd()
         .arg("run")
         .arg("--project")
         .arg("/nonexistent/path")
@@ -112,7 +112,7 @@ fn test_run_with_invalid_project_path() {
 fn test_run_with_no_solidity_files() {
     let temp = TempDir::new().unwrap();
 
-    mutr_cmd()
+    dregs_cmd()
         .arg("run")
         .arg("--project")
         .arg(temp.path())
@@ -126,7 +126,7 @@ fn test_run_with_specific_mutations() {
     let test_run = common::TestRun::from_fixture("simple");
 
     test_run
-        .mutr_cmd()
+        .dregs_cmd()
         .arg("--mutations")
         .arg("binary-op-mutation")
         .assert()
@@ -139,7 +139,7 @@ fn test_run_with_multiple_mutations() {
     let test_run = common::TestRun::from_fixture("simple");
 
     test_run
-        .mutr_cmd()
+        .dregs_cmd()
         .arg("--mutations")
         .arg("binary-op-mutation,require-mutation")
         .assert()
@@ -152,7 +152,7 @@ fn test_run_with_invalid_file_path() {
     let test_run = common::TestRun::from_fixture("simple");
 
     test_run
-        .mutr_cmd()
+        .dregs_cmd()
         .arg("nonexistent.sol")
         .assert()
         .failure()
@@ -164,7 +164,7 @@ fn test_discover_files_in_src_directory() {
     let test_run = common::TestRun::from_fixture("simple");
 
     test_run
-        .mutr_cmd()
+        .dregs_cmd()
         .assert()
         .success()
         .stdout(predicate::str::contains("Counter.sol"));
@@ -177,7 +177,7 @@ fn test_run_auto_detect_project_root_from_files() {
 
     // Pass files without --project; the default "." won't match since we don't cd there,
     // so resolve_project_root should auto-detect from the file's foundry.toml
-    mutr_cmd()
+    dregs_cmd()
         .arg("run")
         .arg(file_path)
         .assert()
@@ -207,7 +207,7 @@ fn test_run_different_project_roots_fails() {
     let file_a = temp_a.path().join("src/A.sol");
     let file_b = temp_b.path().join("src/B.sol");
 
-    mutr_cmd()
+    dregs_cmd()
         .arg("run")
         .arg(&file_a)
         .arg(&file_b)
@@ -230,7 +230,7 @@ fn test_run_auto_detect_same_root_multiple_files() {
     let file2 = test_run.project_path().join("src/Extra.sol");
 
     // Pass two files without --project to exercise the multi-file same-root path
-    mutr_cmd()
+    dregs_cmd()
         .arg("run")
         .arg(&file1)
         .arg(&file2)
@@ -244,7 +244,7 @@ fn test_run_auto_detect_project_root_from_relative_files() {
     let test_run = common::TestRun::from_fixture("simple");
 
     // Use relative path with current_dir set to the project
-    mutr_cmd()
+    dregs_cmd()
         .current_dir(test_run.project_path())
         .arg("run")
         .arg("src/Counter.sol")
@@ -277,7 +277,7 @@ fn test_run_different_project_roots_relative_files_fails() {
     proj_b.child("src/B.sol").touch().unwrap();
 
     // Use relative paths from the parent temp dir
-    mutr_cmd()
+    dregs_cmd()
         .current_dir(temp.path())
         .arg("run")
         .arg("proj_a/src/A.sol")
@@ -301,7 +301,7 @@ fn test_run_file_without_project_root_falls_back() {
 
     // No foundry.toml exists -> find_project_root returns None -> falls back to canonicalize(".")
     // The contract has no mutable operations so gambit generates no mutants.
-    mutr_cmd()
+    dregs_cmd()
         .current_dir(temp.path())
         .arg("run")
         .arg("src/Contract.sol")
@@ -315,7 +315,7 @@ fn test_run_with_forge_args_shows_matched_tests() {
     let test_run = common::TestRun::from_fixture("simple");
 
     test_run
-        .mutr_cmd()
+        .dregs_cmd()
         .arg("--")
         .arg("--match-test")
         .arg("Increment")
@@ -330,7 +330,7 @@ fn test_run_with_forge_args_no_match_fails() {
     let test_run = common::TestRun::from_fixture("simple");
 
     test_run
-        .mutr_cmd()
+        .dregs_cmd()
         .arg("--")
         .arg("--match-test")
         .arg("NonexistentTest")
@@ -354,7 +354,7 @@ fn test_run_with_no_mutants_generated() {
         .unwrap();
     temp.child("test").create_dir_all().unwrap();
 
-    mutr_cmd()
+    dregs_cmd()
         .arg("run")
         .arg("--project")
         .arg(temp.path())
@@ -367,17 +367,17 @@ fn test_run_with_no_mutants_generated() {
 
 #[test]
 fn test_generate_help() {
-    mutr_cmd().arg("generate").arg("--help").assert().success();
+    dregs_cmd().arg("generate").arg("--help").assert().success();
 }
 
 #[test]
 fn test_test_help() {
-    mutr_cmd().arg("test").arg("--help").assert().success();
+    dregs_cmd().arg("test").arg("--help").assert().success();
 }
 
 #[test]
 fn test_report_help() {
-    mutr_cmd().arg("report").arg("--help").assert().success();
+    dregs_cmd().arg("report").arg("--help").assert().success();
 }
 
 // --- Generate subcommand ---
@@ -387,7 +387,7 @@ fn test_generate_simple_project() {
     let test_run = common::TestRun::from_fixture("simple");
     let output_dir = test_run.project_path().join("mutants_out");
 
-    mutr_cmd()
+    dregs_cmd()
         .arg("generate")
         .arg("--project")
         .arg(test_run.project_path())
@@ -406,7 +406,7 @@ fn test_generate_simple_project() {
 #[test]
 fn test_generate_with_no_solidity_files() {
     let temp = TempDir::new().unwrap();
-    mutr_cmd()
+    dregs_cmd()
         .arg("generate")
         .arg("--project")
         .arg(temp.path())
@@ -417,7 +417,7 @@ fn test_generate_with_no_solidity_files() {
 
 #[test]
 fn test_generate_with_invalid_project_path() {
-    mutr_cmd()
+    dregs_cmd()
         .arg("generate")
         .arg("--project")
         .arg("/nonexistent/path")
@@ -432,7 +432,7 @@ fn test_generate_with_explicit_files() {
     let output_dir = test_run.project_path().join("mutants_out");
     let file_path = test_run.project_path().join("src/Counter.sol");
 
-    mutr_cmd()
+    dregs_cmd()
         .arg("generate")
         .arg("--project")
         .arg(test_run.project_path())
@@ -457,7 +457,7 @@ fn test_generate_no_mutants() {
         .unwrap();
     temp.child("test").create_dir_all().unwrap();
 
-    mutr_cmd()
+    dregs_cmd()
         .arg("generate")
         .arg("--project")
         .arg(temp.path())
@@ -475,7 +475,7 @@ fn test_generate_test_report_pipeline() {
     let results_path = test_run.project_path().join("results.json");
 
     // Generate
-    mutr_cmd()
+    dregs_cmd()
         .arg("generate")
         .arg("--project")
         .arg(test_run.project_path())
@@ -488,7 +488,7 @@ fn test_generate_test_report_pipeline() {
     assert!(manifest_path.exists());
 
     // Test
-    mutr_cmd()
+    dregs_cmd()
         .arg("test")
         .arg("--manifest")
         .arg(&manifest_path)
@@ -504,7 +504,7 @@ fn test_generate_test_report_pipeline() {
     assert!(results_content.starts_with('['));
 
     // Report
-    mutr_cmd()
+    dregs_cmd()
         .arg("report")
         .arg(&manifest_path)
         .arg(&results_path)
@@ -523,7 +523,7 @@ fn test_generate_test_with_partition() {
     let results2_path = test_run.project_path().join("results2.json");
 
     // Generate
-    mutr_cmd()
+    dregs_cmd()
         .arg("generate")
         .arg("--project")
         .arg(test_run.project_path())
@@ -535,7 +535,7 @@ fn test_generate_test_with_partition() {
     let manifest_path = mutants_dir.join("manifest.json");
 
     // Test partition 1/2
-    mutr_cmd()
+    dregs_cmd()
         .arg("test")
         .arg("--manifest")
         .arg(&manifest_path)
@@ -549,7 +549,7 @@ fn test_generate_test_with_partition() {
         .success();
 
     // Test partition 2/2
-    mutr_cmd()
+    dregs_cmd()
         .arg("test")
         .arg("--manifest")
         .arg(&manifest_path)
@@ -563,7 +563,7 @@ fn test_generate_test_with_partition() {
         .success();
 
     // Report merging both
-    mutr_cmd()
+    dregs_cmd()
         .arg("report")
         .arg(&manifest_path)
         .arg(&results1_path)
@@ -577,7 +577,7 @@ fn test_generate_test_with_partition() {
 
 #[test]
 fn test_test_invalid_manifest() {
-    mutr_cmd()
+    dregs_cmd()
         .arg("test")
         .arg("--manifest")
         .arg("/nonexistent/manifest.json")
@@ -592,7 +592,7 @@ fn test_test_invalid_partition() {
     let mutants_dir = test_run.project_path().join("mutants_out");
 
     // Generate first
-    mutr_cmd()
+    dregs_cmd()
         .arg("generate")
         .arg("--project")
         .arg(test_run.project_path())
@@ -601,7 +601,7 @@ fn test_test_invalid_partition() {
         .assert()
         .success();
 
-    mutr_cmd()
+    dregs_cmd()
         .arg("test")
         .arg("--manifest")
         .arg(mutants_dir.join("manifest.json"))
@@ -619,7 +619,7 @@ fn test_test_with_workers() {
     let test_run = common::TestRun::from_fixture("simple");
     let mutants_dir = test_run.project_path().join("mutants_out");
 
-    mutr_cmd()
+    dregs_cmd()
         .arg("generate")
         .arg("--project")
         .arg(test_run.project_path())
@@ -628,7 +628,7 @@ fn test_test_with_workers() {
         .assert()
         .success();
 
-    mutr_cmd()
+    dregs_cmd()
         .arg("test")
         .arg("--manifest")
         .arg(mutants_dir.join("manifest.json"))
@@ -645,7 +645,7 @@ fn test_test_no_output_prints_to_stdout() {
     let test_run = common::TestRun::from_fixture("simple");
     let mutants_dir = test_run.project_path().join("mutants_out");
 
-    mutr_cmd()
+    dregs_cmd()
         .arg("generate")
         .arg("--project")
         .arg(test_run.project_path())
@@ -655,7 +655,7 @@ fn test_test_no_output_prints_to_stdout() {
         .success();
 
     // Without --output, results go to stdout as JSON
-    mutr_cmd()
+    dregs_cmd()
         .arg("test")
         .arg("--manifest")
         .arg(mutants_dir.join("manifest.json"))
@@ -671,7 +671,7 @@ fn test_test_with_forge_args() {
     let test_run = common::TestRun::from_fixture("simple");
     let mutants_dir = test_run.project_path().join("mutants_out");
 
-    mutr_cmd()
+    dregs_cmd()
         .arg("generate")
         .arg("--project")
         .arg(test_run.project_path())
@@ -680,7 +680,7 @@ fn test_test_with_forge_args() {
         .assert()
         .success();
 
-    mutr_cmd()
+    dregs_cmd()
         .arg("test")
         .arg("--manifest")
         .arg(mutants_dir.join("manifest.json"))
@@ -701,7 +701,7 @@ fn test_report_no_result_files() {
     let test_run = common::TestRun::from_fixture("simple");
     let mutants_dir = test_run.project_path().join("mutants_out");
 
-    mutr_cmd()
+    dregs_cmd()
         .arg("generate")
         .arg("--project")
         .arg(test_run.project_path())
@@ -710,7 +710,7 @@ fn test_report_no_result_files() {
         .assert()
         .success();
 
-    mutr_cmd()
+    dregs_cmd()
         .arg("report")
         .arg(mutants_dir.join("manifest.json"))
         .assert()
@@ -725,7 +725,7 @@ fn test_report_with_fail_under() {
     let results_path = test_run.project_path().join("results.json");
 
     // Generate
-    mutr_cmd()
+    dregs_cmd()
         .arg("generate")
         .arg("--project")
         .arg(test_run.project_path())
@@ -735,7 +735,7 @@ fn test_report_with_fail_under() {
         .success();
 
     // Test
-    mutr_cmd()
+    dregs_cmd()
         .arg("test")
         .arg("--manifest")
         .arg(mutants_dir.join("manifest.json"))
@@ -747,7 +747,7 @@ fn test_report_with_fail_under() {
         .success();
 
     // Report with impossible threshold
-    mutr_cmd()
+    dregs_cmd()
         .arg("report")
         .arg(mutants_dir.join("manifest.json"))
         .arg(&results_path)
@@ -766,7 +766,7 @@ fn test_report_with_json_output() {
     let report_path = test_run.project_path().join("report.json");
 
     // Generate
-    mutr_cmd()
+    dregs_cmd()
         .arg("generate")
         .arg("--project")
         .arg(test_run.project_path())
@@ -776,7 +776,7 @@ fn test_report_with_json_output() {
         .success();
 
     // Test
-    mutr_cmd()
+    dregs_cmd()
         .arg("test")
         .arg("--manifest")
         .arg(mutants_dir.join("manifest.json"))
@@ -788,7 +788,7 @@ fn test_report_with_json_output() {
         .success();
 
     // Report with JSON output
-    mutr_cmd()
+    dregs_cmd()
         .arg("report")
         .arg(mutants_dir.join("manifest.json"))
         .arg(&results_path)
@@ -810,7 +810,7 @@ fn test_report_with_markdown_format() {
     let results_path = test_run.project_path().join("results.json");
 
     // Generate
-    mutr_cmd()
+    dregs_cmd()
         .arg("generate")
         .arg("--project")
         .arg(test_run.project_path())
@@ -820,7 +820,7 @@ fn test_report_with_markdown_format() {
         .success();
 
     // Test
-    mutr_cmd()
+    dregs_cmd()
         .arg("test")
         .arg("--manifest")
         .arg(mutants_dir.join("manifest.json"))
@@ -832,7 +832,7 @@ fn test_report_with_markdown_format() {
         .success();
 
     // Report with markdown format
-    mutr_cmd()
+    dregs_cmd()
         .arg("report")
         .arg(mutants_dir.join("manifest.json"))
         .arg(&results_path)
@@ -852,7 +852,7 @@ fn test_report_partial_coverage_warning() {
     let mutants_dir = test_run.project_path().join("mutants_out");
 
     // Generate
-    mutr_cmd()
+    dregs_cmd()
         .arg("generate")
         .arg("--project")
         .arg(test_run.project_path())
@@ -872,7 +872,7 @@ fn test_report_partial_coverage_warning() {
     std::fs::write(&results_path, partial.to_string()).unwrap();
 
     // Report should warn about partial coverage
-    mutr_cmd()
+    dregs_cmd()
         .arg("report")
         .arg(mutants_dir.join("manifest.json"))
         .arg(&results_path)
@@ -888,7 +888,7 @@ fn test_test_empty_partition_with_output() {
     let results_path = test_run.project_path().join("empty_results.json");
 
     // Generate (simple fixture produces a small number of mutants)
-    mutr_cmd()
+    dregs_cmd()
         .arg("generate")
         .arg("--project")
         .arg(test_run.project_path())
@@ -898,7 +898,7 @@ fn test_test_empty_partition_with_output() {
         .success();
 
     // Use a very high partition total so this partition index has no mutants
-    mutr_cmd()
+    dregs_cmd()
         .arg("test")
         .arg("--manifest")
         .arg(mutants_dir.join("manifest.json"))
@@ -923,7 +923,7 @@ fn test_test_empty_partition_without_output() {
     let test_run = common::TestRun::from_fixture("simple");
     let mutants_dir = test_run.project_path().join("mutants_out");
 
-    mutr_cmd()
+    dregs_cmd()
         .arg("generate")
         .arg("--project")
         .arg(test_run.project_path())
@@ -933,7 +933,7 @@ fn test_test_empty_partition_without_output() {
         .success();
 
     // Empty partition without --output
-    mutr_cmd()
+    dregs_cmd()
         .arg("test")
         .arg("--manifest")
         .arg(mutants_dir.join("manifest.json"))
@@ -963,7 +963,7 @@ contract FailingTest {
     )
     .unwrap();
 
-    mutr_cmd()
+    dregs_cmd()
         .arg("run")
         .arg("--project")
         .arg(test_run.project_path())
@@ -976,7 +976,7 @@ contract FailingTest {
 
 #[test]
 fn test_run_workers_zero_fails() {
-    mutr_cmd()
+    dregs_cmd()
         .arg("run")
         .arg("--workers")
         .arg("0")
@@ -986,7 +986,7 @@ fn test_run_workers_zero_fails() {
 
 #[test]
 fn test_test_workers_zero_fails() {
-    mutr_cmd()
+    dregs_cmd()
         .arg("test")
         .arg("--manifest")
         .arg("dummy")
@@ -1000,7 +1000,7 @@ fn test_test_workers_zero_fails() {
 fn test_run_with_workers() {
     let test_run = common::TestRun::from_fixture("simple");
     test_run
-        .mutr_cmd()
+        .dregs_cmd()
         .arg("--workers")
         .arg("2")
         .assert()

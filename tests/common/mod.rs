@@ -27,8 +27,8 @@ impl TestRun {
     }
 
     #[allow(deprecated)]
-    pub fn mutr_cmd(&self) -> Command {
-        let mut cmd = Command::cargo_bin("mutr").unwrap();
+    pub fn dregs_cmd(&self) -> Command {
+        let mut cmd = Command::cargo_bin("dregs").unwrap();
         cmd.arg("run").arg("--project").arg(self.project_path());
         cmd
     }
@@ -51,7 +51,7 @@ fn copy_dir_recursive(src: &Path, dst: &Path) -> std::io::Result<()> {
             || file_name_str == "cache"
             || file_name_str == "out"
             || file_name_str == "gambit_out"
-            || file_name_str == "mutr.toml"
+            || file_name_str == "dregs.toml"
         {
             continue;
         }

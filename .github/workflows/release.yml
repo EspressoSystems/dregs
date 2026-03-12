@@ -17,13 +17,13 @@ jobs:
       matrix:
         include:
           - os: ubuntu-latest
-            artifact: mutr-linux-amd64
+            artifact: dregs-linux-amd64
             target: x86_64-unknown-linux-musl
           - os: ubuntu-24.04-arm
-            artifact: mutr-linux-aarch64
+            artifact: dregs-linux-aarch64
             target: aarch64-unknown-linux-musl
           - os: macos-latest
-            artifact: mutr-macos-aarch64
+            artifact: dregs-macos-aarch64
             target: aarch64-apple-darwin
     runs-on: ${{ matrix.os }}
     steps:
@@ -34,7 +34,7 @@ jobs:
       - run: rustup target add ${{ matrix.target }}
       - uses: Swatinem/rust-cache@v2
       - run: cargo build --release --target ${{ matrix.target }}
-      - run: cp target/${{ matrix.target }}/release/mutr ${{ matrix.artifact }}
+      - run: cp target/${{ matrix.target }}/release/dregs ${{ matrix.artifact }}
       - uses: actions/upload-artifact@v7
         with:
           name: ${{ matrix.artifact }}
@@ -51,7 +51,7 @@ jobs:
       - name: Verify Cargo.toml version matches tag
         shell: bash
         run: |
-          cargo_version=$(cargo metadata --format-version=1 --no-deps | jq -r '.packages[] | select(.name == "mutr") | .version')
+          cargo_version=$(cargo metadata --format-version=1 --no-deps | jq -r '.packages[] | select(.name == "dregs") | .version')
           tag_version=${GITHUB_REF_NAME#v}
           if [ "$cargo_version" != "$tag_version" ]; then
             echo "::error::Version mismatch: Cargo.toml=$cargo_version tag=$tag_version"
@@ -59,7 +59,7 @@ jobs:
           fi
       - uses: actions/download-artifact@v8
         with:
-          pattern: mutr-*
+          pattern: dregs-*
           merge-multiple: true
       - name: Detect pre-release
         id: prerelease
@@ -73,5 +73,5 @@ jobs:
       - uses: softprops/action-gh-release@v2
         with:
           generate_release_notes: true
-          files: mutr-*
+          files: dregs-*
           prerelease: ${{ steps.prerelease.outputs.is_prerelease }}

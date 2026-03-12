@@ -7,7 +7,7 @@ use std::sync::atomic::{AtomicU32, Ordering};
 use std::time::Instant;
 
 use crate::config::{
-    FoundryConfig, MutrConfig, find_project_root, parse_foundry_toml, parse_mutr_toml,
+    DregsConfig, FoundryConfig, find_project_root, parse_dregs_toml, parse_foundry_toml,
     resolve_remappings,
 };
 use crate::generator::gambit::GambitGenerator;
@@ -32,7 +32,7 @@ pub enum OutputFormat {
 }
 
 #[derive(Parser)]
-#[command(name = "mutr", version)]
+#[command(name = "dregs", version)]
 #[command(about = "Mutation testing for Solidity projects", long_about = None)]
 pub struct Cli {
     #[command(subcommand)]
@@ -49,7 +49,7 @@ pub enum Commands {
         #[arg(short, long, default_value = ".", help = "Project root")]
         project: PathBuf,
 
-        #[arg(long, help = "Path to mutr.toml config file")]
+        #[arg(long, help = "Path to dregs.toml config file")]
         config: Option<PathBuf>,
 
         #[arg(short, long, help = "Output report path (JSON)")]
@@ -100,7 +100,7 @@ pub enum Commands {
         #[arg(short, long, default_value = ".", help = "Project root")]
         project: PathBuf,
 
-        #[arg(long, help = "Path to mutr.toml config file")]
+        #[arg(long, help = "Path to dregs.toml config file")]
         config: Option<PathBuf>,
 
         #[arg(
@@ -240,15 +240,15 @@ pub fn run(cli: Cli) -> Result<()> {
 }
 
 fn resolve_targets(
-    mutr_config: Option<MutrConfig>,
+    dregs_config: Option<DregsConfig>,
     cli_files: Vec<PathBuf>,
     forge_args: &[String],
     project_root: &Path,
 ) -> Result<Vec<FileTarget>> {
-    if let Some(config) = mutr_config {
+    if let Some(config) = dregs_config {
         if !cli_files.is_empty() || !forge_args.is_empty() {
             anyhow::bail!(
-                "mutr.toml defines targets; do not pass files or -- forge_args on the command line"
+                "dregs.toml defines targets; do not pass files or -- forge_args on the command line"
             );
         }
         let mut targets = Vec::new();
@@ -264,7 +264,7 @@ fn resolve_targets(
             }
         }
         if targets.is_empty() {
-            anyhow::bail!("mutr.toml targets matched no files");
+            anyhow::bail!("dregs.toml targets matched no files");
         }
         Ok(targets)
     } else {
@@ -458,19 +458,19 @@ fn run_mutation_testing(
         fc
     });
 
-    let mutr_config =
-        parse_mutr_toml(&project_root, config.as_deref()).context("failed to parse mutr.toml")?;
+    let dregs_config =
+        parse_dregs_toml(&project_root, config.as_deref()).context("failed to parse dregs.toml")?;
 
-    // When mutr.toml defines targets, each has its own forge_args, so baseline runs unfiltered.
+    // When dregs.toml defines targets, each has its own forge_args, so baseline runs unfiltered.
     // When using CLI forge_args, baseline validates that matching tests exist.
-    let baseline_forge_args: &[String] = if mutr_config.is_some() {
+    let baseline_forge_args: &[String] = if dregs_config.is_some() {
         &[]
     } else {
         forge_args
     };
     run_baseline_tests(&project_root, baseline_forge_args)?;
 
-    let targets = resolve_targets(mutr_config, files, forge_args, &project_root)?;
+    let targets = resolve_targets(dregs_config, files, forge_args, &project_root)?;
     let mutants = generate_mutants(
         &project_root,
         targets,
@@ -530,9 +530,9 @@ fn cmd_generate(
         fc
     });
 
-    let mutr_config =
-        parse_mutr_toml(&project_root, config.as_deref()).context("failed to parse mutr.toml")?;
-    let targets = resolve_targets(mutr_config, files, &[], &project_root)?;
+    let dregs_config =
+        parse_dregs_toml(&project_root, config.as_deref()).context("failed to parse dregs.toml")?;
+    let targets = resolve_targets(dregs_config, files, &[], &project_root)?;
 
     let mutants = generate_mutants(
         &project_root,
@@ -828,14 +828,14 @@ mod tests {
     }
 
     #[test]
-    fn test_resolve_targets_from_mutr_config() {
-        use crate::config::{MutrConfig, TargetConfig};
+    fn test_resolve_targets_from_dregs_config() {
+        use crate::config::{DregsConfig, TargetConfig};
         use assert_fs::prelude::*;
 
         let temp = assert_fs::TempDir::new().unwrap();
         temp.child("src/Token.sol").write_str("// sol").unwrap();
 
-        let config = MutrConfig {
+        let config = DregsConfig {
             targets: vec![TargetConfig {
                 files: vec!["src/Token.sol".to_string()],
                 contracts: Some(vec!["Token".to_string()]),
@@ -855,10 +855,10 @@ mod tests {
 
     #[test]
     fn test_resolve_targets_config_conflict_with_files() {
-        use crate::config::{MutrConfig, TargetConfig};
+        use crate::config::{DregsConfig, TargetConfig};
 
         let temp = assert_fs::TempDir::new().unwrap();
-        let config = MutrConfig {
+        let config = DregsConfig {
             targets: vec![TargetConfig {
                 files: vec!["src/Token.sol".to_string()],
                 contracts: None,
@@ -878,16 +878,16 @@ mod tests {
             result
                 .unwrap_err()
                 .to_string()
-                .contains("mutr.toml defines targets")
+                .contains("dregs.toml defines targets")
         );
     }
 
     #[test]
     fn test_resolve_targets_config_conflict_with_forge_args() {
-        use crate::config::{MutrConfig, TargetConfig};
+        use crate::config::{DregsConfig, TargetConfig};
 
         let temp = assert_fs::TempDir::new().unwrap();
-        let config = MutrConfig {
+        let config = DregsConfig {
             targets: vec![TargetConfig {
                 files: vec!["src/Token.sol".to_string()],
                 contracts: None,
@@ -907,13 +907,13 @@ mod tests {
             result
                 .unwrap_err()
                 .to_string()
-                .contains("mutr.toml defines targets")
+                .contains("dregs.toml defines targets")
         );
     }
 
     #[test]
     fn test_resolve_targets_config_glob_pattern() {
-        use crate::config::{MutrConfig, TargetConfig};
+        use crate::config::{DregsConfig, TargetConfig};
         use assert_fs::prelude::*;
 
         let temp = assert_fs::TempDir::new().unwrap();
@@ -921,7 +921,7 @@ mod tests {
         temp.child("src/B.sol").write_str("// sol").unwrap();
         temp.child("src/nested/C.sol").write_str("// sol").unwrap();
 
-        let config = MutrConfig {
+        let config = DregsConfig {
             targets: vec![TargetConfig {
                 files: vec!["src/**/*.sol".to_string()],
                 contracts: None,
@@ -936,10 +936,10 @@ mod tests {
 
     #[test]
     fn test_resolve_targets_config_no_matching_files() {
-        use crate::config::{MutrConfig, TargetConfig};
+        use crate::config::{DregsConfig, TargetConfig};
 
         let temp = assert_fs::TempDir::new().unwrap();
-        let config = MutrConfig {
+        let config = DregsConfig {
             targets: vec![TargetConfig {
                 files: vec!["nonexistent/**/*.sol".to_string()],
                 contracts: None,
@@ -960,10 +960,10 @@ mod tests {
 
     #[test]
     fn test_resolve_targets_config_missing_literal_file() {
-        use crate::config::{MutrConfig, TargetConfig};
+        use crate::config::{DregsConfig, TargetConfig};
 
         let temp = assert_fs::TempDir::new().unwrap();
-        let config = MutrConfig {
+        let config = DregsConfig {
             targets: vec![TargetConfig {
                 files: vec!["src/Missing.sol".to_string()],
                 contracts: None,

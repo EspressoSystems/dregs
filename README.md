@@ -1,4 +1,4 @@
-# mutr
+# dregs
 
 > **WIP** - Mutation testing for Solidity projects using Foundry.
 
@@ -9,12 +9,12 @@ Generates mutants with [Gambit](https://github.com/Certora/gambit), runs
 
 ### From GitHub releases
 
-Download a binary from the [releases page](https://github.com/EspressoSystems/mutr/releases).
+Download a binary from the [releases page](https://github.com/EspressoSystems/dregs/releases).
 
 ### From source
 
 ```bash
-cargo install --git https://github.com/EspressoSystems/mutr
+cargo install --git https://github.com/EspressoSystems/dregs
 ```
 
 Requires `forge` and `solc` in PATH.
@@ -22,7 +22,7 @@ Requires `forge` and `solc` in PATH.
 ### With nix
 
 ```bash
-nix run github:EspressoSystems/mutr -- run --project .
+nix run github:EspressoSystems/dregs -- run --project .
 ```
 
 ## Development
@@ -40,7 +40,7 @@ just cov
 ### Simple run
 
 ```bash
-mutr run --project ./my-foundry-project
+dregs run --project ./my-foundry-project
 ```
 
 ```
@@ -59,7 +59,7 @@ Surviving mutants:
 ### Parallel execution
 
 ```bash
-mutr run --project . --workers 4
+dregs run --project . --workers 4
 ```
 
 ### Sharding (generate once, test in parallel jobs)
@@ -67,22 +67,22 @@ mutr run --project . --workers 4
 Generate a manifest:
 
 ```bash
-mutr generate --project . --output ./mutants
+dregs generate --project . --output ./mutants
 ```
 
 Test partitions independently (e.g. in CI):
 
 ```bash
-mutr test --manifest ./mutants/manifest.json --project . --partition slice:1/4 --output results-1.json
-mutr test --manifest ./mutants/manifest.json --project . --partition slice:2/4 --output results-2.json
-mutr test --manifest ./mutants/manifest.json --project . --partition slice:3/4 --output results-3.json
-mutr test --manifest ./mutants/manifest.json --project . --partition slice:4/4 --output results-4.json
+dregs test --manifest ./mutants/manifest.json --project . --partition slice:1/4 --output results-1.json
+dregs test --manifest ./mutants/manifest.json --project . --partition slice:2/4 --output results-2.json
+dregs test --manifest ./mutants/manifest.json --project . --partition slice:3/4 --output results-3.json
+dregs test --manifest ./mutants/manifest.json --project . --partition slice:4/4 --output results-4.json
 ```
 
 Merge results and report:
 
 ```bash
-mutr report ./mutants/manifest.json results-*.json --fail-under 0.8
+dregs report ./mutants/manifest.json results-*.json --fail-under 0.8
 ```
 
 ### CI
@@ -91,7 +91,7 @@ See [`.github/workflows/example-mutation-test.yml`](.github/workflows/example-mu
 
 ### Target configuration
 
-Create a `mutr.toml` in your project root to pair contracts with their tests. See [`tests/fixtures/simple/mutr.toml`](tests/fixtures/simple/mutr.toml) for a working example.
+Create a `dregs.toml` in your project root to pair contracts with their tests. See [`tests/fixtures/simple/dregs.toml`](tests/fixtures/simple/dregs.toml) for a working example.
 
 ```toml
 [[target]]
@@ -115,12 +115,12 @@ Each target specifies:
 - `functions` (optional) - filter mutations to these functions
 - `forge_args` (optional) - arguments passed to `forge test` for these mutants
 
-When `mutr.toml` exists, CLI file arguments and `-- forge_args` are not allowed (mutually exclusive). Global flags like `--workers`, `--mutations`, `--skip-validate`, and `--fail-under` are always from the CLI.
+When `dregs.toml` exists, CLI file arguments and `-- forge_args` are not allowed (mutually exclusive). Global flags like `--workers`, `--mutations`, `--skip-validate`, and `--fail-under` are always from the CLI.
 
 Use `--config` to specify a custom config path:
 
 ```bash
-mutr run --project . --config path/to/custom.toml
+dregs run --project . --config path/to/custom.toml
 ```
 
 ### Passing arguments to forge
@@ -128,8 +128,8 @@ mutr run --project . --config path/to/custom.toml
 Everything after `--` is forwarded to `forge test`:
 
 ```bash
-mutr run --project . -- --match-contract CounterTest
-mutr run --project . -- --match-test "test_increment|test_decrement"
+dregs run --project . -- --match-contract CounterTest
+dregs run --project . -- --match-test "test_increment|test_decrement"
 ```
 
 ```

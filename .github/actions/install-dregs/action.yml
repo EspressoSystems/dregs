@@ -1,0 +1,33 @@
+name: Install dregs
+description: Download dregs binary from GitHub releases (Linux amd64 only)
+
+inputs:
+  version:
+    description: dregs version (without v prefix)
+    default: "latest"
+  github-token:
+    description: GitHub token for private repo access
+    default: ""
+
+runs:
+  using: composite
+  steps:
+    - name: Download dregs
+      run: |
+        AUTH_HEADER=""
+        if [ -n "${{ inputs.github-token }}" ]; then
+          AUTH_HEADER="Authorization: token ${{ inputs.github-token }}"
+        fi
+        if [ "${{ inputs.version }}" = "latest" ]; then
+          URL=$(curl -fSL ${AUTH_HEADER:+-H "$AUTH_HEADER"} \
+            https://api.github.com/repos/EspressoSystems/dregs/releases \
+            | jq -r '.[0].assets[] | select(.name == "dregs-linux-amd64") | .url')
+        else
+          URL="https://api.github.com/repos/EspressoSystems/dregs/releases/assets/$(curl -fSL ${AUTH_HEADER:+-H "$AUTH_HEADER"} \
+            https://api.github.com/repos/EspressoSystems/dregs/releases/tags/v${{ inputs.version }} \
+            | jq -r '.assets[] | select(.name == "dregs-linux-amd64") | .id')"
+        fi
+        curl -fL ${AUTH_HEADER:+-H "$AUTH_HEADER"} -H "Accept: application/octet-stream" -o /usr/local/bin/dregs "$URL"
+        chmod +x /usr/local/bin/dregs
+        dregs --version
+      shell: bash

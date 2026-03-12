@@ -15,15 +15,15 @@ jobs:
       - uses: foundry-rs/foundry-toolchain@v1
       - uses: ./.github/actions/install-solc
       - run: cargo build --release
-      - run: ./target/release/mutr generate --project tests/fixtures/simple --output ./mutants
+      - run: ./target/release/dregs generate --project tests/fixtures/simple --output ./mutants
       - uses: actions/upload-artifact@v7
         with:
           name: mutants
           path: mutants/
       - uses: actions/upload-artifact@v7
         with:
-          name: mutr-binary
-          path: target/release/mutr
+          name: dregs-binary
+          path: target/release/dregs
 
   test-shard:
     needs: generate
@@ -41,10 +41,10 @@ jobs:
           path: mutants
       - uses: actions/download-artifact@v8
         with:
-          name: mutr-binary
-      - run: chmod +x ./mutr
+          name: dregs-binary
+      - run: chmod +x ./dregs
       - run: >-
-          ./mutr test
+          ./dregs test
           --manifest ./mutants/manifest.json
           --project tests/fixtures/simple
           --partition slice:${{ matrix.shard }}/4
@@ -64,14 +64,14 @@ jobs:
           path: mutants
       - uses: actions/download-artifact@v8
         with:
-          name: mutr-binary
+          name: dregs-binary
       - uses: actions/download-artifact@v8
         with:
           pattern: results-*
           merge-multiple: true
-      - run: chmod +x ./mutr
+      - run: chmod +x ./dregs
       - run: >-
-          ./mutr report ./mutants/manifest.json results-*.json
+          ./dregs report ./mutants/manifest.json results-*.json
           --format markdown --output report.json
           | tee "$GITHUB_STEP_SUMMARY"
       - uses: actions/upload-artifact@v7
