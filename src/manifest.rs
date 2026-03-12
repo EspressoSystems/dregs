@@ -97,6 +97,7 @@ mod tests {
                 original: "+".to_string(),
                 replacement: "-".to_string(),
                 line: 12,
+                forge_args: vec![],
             },
             Mutant {
                 id: 2,
@@ -107,6 +108,7 @@ mod tests {
                 original: "require(true)".to_string(),
                 replacement: "require(false)".to_string(),
                 line: 15,
+                forge_args: vec![],
             },
         ]
     }

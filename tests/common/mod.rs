@@ -51,6 +51,7 @@ fn copy_dir_recursive(src: &Path, dst: &Path) -> std::io::Result<()> {
             || file_name_str == "cache"
             || file_name_str == "out"
             || file_name_str == "gambit_out"
+            || file_name_str == "mutr.toml"
         {
             continue;
         }

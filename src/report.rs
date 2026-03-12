@@ -271,6 +271,7 @@ mod tests {
                 original: "+".to_string(),
                 replacement: "-".to_string(),
                 line: 12,
+                forge_args: vec![],
             },
             Mutant {
                 id: 2,
@@ -281,6 +282,7 @@ mod tests {
                 original: "require(true)".to_string(),
                 replacement: "require(false)".to_string(),
                 line: 15,
+                forge_args: vec![],
             },
         ];
 
@@ -479,6 +481,7 @@ mod tests {
                 original: "a".to_string(),
                 replacement: "b".to_string(),
                 line: 1,
+                forge_args: vec![],
             },
             Mutant {
                 id: 2,
@@ -489,6 +492,7 @@ mod tests {
                 original: "c".to_string(),
                 replacement: "d".to_string(),
                 line: 2,
+                forge_args: vec![],
             },
         ];
 
@@ -519,6 +523,7 @@ mod tests {
             original: "old".to_string(),
             replacement: "new".to_string(),
             line: 5,
+            forge_args: vec![],
         }];
 
         let report = Report::new(results);
@@ -691,6 +696,7 @@ mod tests {
                 original: "a".to_string(),
                 replacement: "b".to_string(),
                 line: 1,
+                forge_args: vec![],
             },
             Mutant {
                 id: 2,
@@ -701,6 +707,7 @@ mod tests {
                 original: "c".to_string(),
                 replacement: "d".to_string(),
                 line: 2,
+                forge_args: vec![],
             },
         ];
 
@@ -762,6 +769,7 @@ mod tests {
             operator: "test-op".to_string(),
             original: "old".to_string(),
             replacement: "new".to_string(),
+            forge_args: vec![],
             line: 5,
         }];
 

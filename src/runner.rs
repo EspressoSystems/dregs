@@ -37,11 +37,7 @@ pub struct TestResult {
     pub duration: Duration,
 }
 
-pub fn run_mutant(
-    mutant: &Mutant,
-    project_root: &Path,
-    forge_args: &[String],
-) -> Result<TestResult> {
+pub fn run_mutant(mutant: &Mutant, project_root: &Path) -> Result<TestResult> {
     let start = Instant::now();
 
     let temp_dir = TempDir::new()?;
@@ -50,7 +46,7 @@ pub fn run_mutant(
     copy_project_to_temp(project_root, temp_project)?;
     apply_mutant_to_project(mutant, temp_project)?;
 
-    let forge_result = run_forge_test(temp_project, forge_args)?;
+    let forge_result = run_forge_test(temp_project, &mutant.forge_args)?;
     let killed = forge_result.failed;
     let killed_by = forge_result.killed_by;
 
@@ -457,6 +453,7 @@ mod tests {
             original: "original".to_string(),
             replacement: "mutated".to_string(),
             line: 1,
+            forge_args: vec![],
         };
 
         let result = apply_mutant_to_project(&mutant, temp_project.path());
@@ -482,6 +479,7 @@ mod tests {
             original: "original".to_string(),
             replacement: "mutated".to_string(),
             line: 1,
+            forge_args: vec![],
         };
 
         let result = apply_mutant_to_project(&mutant, temp_project.path());
@@ -506,6 +504,7 @@ mod tests {
             original: "original".to_string(),
             replacement: "mutated".to_string(),
             line: 1,
+            forge_args: vec![],
         };
 
         let result = apply_mutant_to_project(&mutant, temp_project.path());
@@ -715,7 +714,7 @@ solc = "0.8.30"
     #[test]
     fn test_run_mutant_integration() {
         use crate::generator::gambit::GambitGenerator;
-        use crate::generator::{GeneratorConfig, MutationGenerator};
+        use crate::generator::{FileTarget, GeneratorConfig, MutationGenerator};
         use tempfile::TempDir;
 
         let (_fixture_temp, project_root) = crate::test_utils::fixture_to_temp("simple");
@@ -725,7 +724,12 @@ solc = "0.8.30"
         let generator = GambitGenerator::new();
         let config = GeneratorConfig {
             project_root: project_root.clone(),
-            files: vec![project_root.join("src/Counter.sol")],
+            targets: vec![FileTarget {
+                file: project_root.join("src/Counter.sol"),
+                contracts: vec![],
+                functions: vec![],
+                forge_args: vec![],
+            }],
             operators: vec![],
             output_dir,
             foundry_config: None,
@@ -735,7 +739,7 @@ solc = "0.8.30"
         let mutants = generator.generate(&config).unwrap();
         assert!(!mutants.is_empty());
 
-        let result = run_mutant(&mutants[0], &project_root, &[]).unwrap();
+        let result = run_mutant(&mutants[0], &project_root).unwrap();
         assert_eq!(result.mutant_id, 1);
         assert!(result.killed);
         assert!(result.killed_by.as_ref().unwrap().contains("CounterTest"));

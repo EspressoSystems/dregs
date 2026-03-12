@@ -45,6 +45,17 @@ A Rust CLI tool that runs mutation testing for Solidity projects using Foundry. 
 - [x] GitHub Actions CI/CD (lint, test, coverage, mutation test, release)
 - [x] `report --format markdown` for CI step summaries
 
+### Target Configuration (Complete)
+
+- [x] `mutr.toml` config file with `[[target]]` sections
+- [x] Per-target `files`, `contracts`, `functions`, `forge_args`
+- [x] Glob pattern support in target files
+- [x] Conflict detection: error when both mutr.toml and CLI files/forge_args
+- [x] Per-mutant `forge_args` through generate/manifest/test pipeline
+- [x] Contract and function filters passed to gambit
+- [x] `--config` flag to override mutr.toml path
+- [x] Backward compatible: old manifests without forge_args deserialize fine
+
 ### Incremental Testing
 
 - [ ] Cache test results by mutant hash
@@ -80,6 +91,8 @@ Use the rust-dev agent for Rust implementation tasks.
 
 Use semantic commit messages: `type: description`
 
+- Present tense ("add" not "added")
+- Bullet points in body for multiple changes
 - feat: new feature
 - fix: bug fix
 - docs: documentation
@@ -116,10 +129,10 @@ mutr
 │   ├── main.rs           # Thin entry point, delegates to cli::run
 │   ├── lib.rs            # Library root, test utilities
 │   ├── cli.rs            # CLI logic: clap structs, subcommands, orchestration
-│   ├── config.rs         # foundry.toml parsing, project root detection, remapping resolution
+│   ├── config.rs         # foundry.toml + mutr.toml parsing, project root detection, remapping resolution
 │   ├── generator/
-│   │   ├── mod.rs        # Generator trait, Mutant type
-│   │   └── gambit.rs     # Gambit implementation
+│   │   ├── mod.rs        # Generator trait, Mutant type, FileTarget
+│   │   └── gambit.rs     # Gambit implementation with contract/function filters
 │   ├── manifest.rs       # Manifest read/write for CI sharding
 │   ├── partition.rs      # Round-robin partition for CI sharding
 │   ├── runner.rs         # Test runner (forge test)
@@ -150,7 +163,7 @@ mutr
 - serde + serde_json: Config and report serialization
 - tempfile: Temp directory management
 - thiserror: Typed errors for testable error paths
-- toml: foundry.toml parsing
+- toml: foundry.toml + mutr.toml parsing
 - anyhow: Top-level error handling (main.rs only)
 
 ### External Tools (must be in PATH)
@@ -181,3 +194,5 @@ mutr
 - **rayon for parallelism**: Local thread pool per run, not global, to support configurable worker count
 - **ID-based partitioning**: Round-robin by mutant ID (contiguous 1-based from gambit) for deterministic shard assignment
 - **Manifest with relative paths**: Stored relative to manifest dir, resolved on read for portability across CI runners
+- **Per-mutant forge_args**: Each mutant carries its own forge_args from the target config, enabling different test filters per contract
+- **mutr.toml mutually exclusive with CLI files/forge_args**: Prevents ambiguous configuration; global flags (workers, mutations, etc.) always from CLI

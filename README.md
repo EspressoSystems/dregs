@@ -89,6 +89,40 @@ mutr report ./mutants/manifest.json results-*.json --fail-under 0.8
 
 See [`.github/workflows/example-mutation-test.yml`](.github/workflows/example-mutation-test.yml) for a sharded GitHub Actions workflow using release binaries.
 
+### Target configuration
+
+Create a `mutr.toml` in your project root to pair contracts with their tests. See [`tests/fixtures/simple/mutr.toml`](tests/fixtures/simple/mutr.toml) for a working example.
+
+```toml
+[[target]]
+files = ["src/Token.sol"]
+contracts = ["Token"]
+forge_args = ["--match-contract", "TokenTest"]
+
+[[target]]
+files = ["src/Vault.sol"]
+functions = ["deposit", "withdraw"]
+forge_args = ["--match-contract", "VaultTest"]
+
+[[target]]
+files = ["src/utils/**/*.sol"]
+```
+
+Each target specifies:
+
+- `files` (required) - Solidity files to mutate, supports glob patterns
+- `contracts` (optional) - filter mutations to these contracts
+- `functions` (optional) - filter mutations to these functions
+- `forge_args` (optional) - arguments passed to `forge test` for these mutants
+
+When `mutr.toml` exists, CLI file arguments and `-- forge_args` are not allowed (mutually exclusive). Global flags like `--workers`, `--mutations`, `--skip-validate`, and `--fail-under` are always from the CLI.
+
+Use `--config` to specify a custom config path:
+
+```bash
+mutr run --project . --config path/to/custom.toml
+```
+
 ### Passing arguments to forge
 
 Everything after `--` is forwarded to `forge test`:

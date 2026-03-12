@@ -1,6 +1,9 @@
 name: "Example: Mutation Test (Sharded)"
 
 on:
+  push:
+    branches: [main]
+  pull_request:
   workflow_dispatch:
 
 env:
@@ -20,12 +23,14 @@ jobs:
           solc --version
       - name: Install mutr
         run: |
-          URL=$(curl -fSL https://api.github.com/repos/EspressoSystems/mutr/releases/latest \
-            | jq -r '.assets[] | select(.name == "mutr-linux-amd64") | .browser_download_url')
-          curl -fL -o /usr/local/bin/mutr "$URL"
+          URL=$(curl -fSL -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+            https://api.github.com/repos/EspressoSystems/mutr/releases \
+            | jq -r '.[0].assets[] | select(.name == "mutr-linux-amd64") | .url')
+          curl -fL -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+            -H "Accept: application/octet-stream" -o /usr/local/bin/mutr "$URL"
           chmod +x /usr/local/bin/mutr
           mutr --version
-      - run: mutr generate --project . --output ./mutants
+      - run: mutr generate --project tests/fixtures/simple --output ./mutants
       - uses: actions/upload-artifact@v7
         with:
           name: mutants
@@ -48,9 +53,11 @@ jobs:
           solc --version
       - name: Install mutr
         run: |
-          URL=$(curl -fSL https://api.github.com/repos/EspressoSystems/mutr/releases/latest \
-            | jq -r '.assets[] | select(.name == "mutr-linux-amd64") | .browser_download_url')
-          curl -fL -o /usr/local/bin/mutr "$URL"
+          URL=$(curl -fSL -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+            https://api.github.com/repos/EspressoSystems/mutr/releases \
+            | jq -r '.[0].assets[] | select(.name == "mutr-linux-amd64") | .url')
+          curl -fL -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+            -H "Accept: application/octet-stream" -o /usr/local/bin/mutr "$URL"
           chmod +x /usr/local/bin/mutr
           mutr --version
       - uses: actions/download-artifact@v8
@@ -60,7 +67,7 @@ jobs:
       - run: >-
           mutr test
           --manifest ./mutants/manifest.json
-          --project .
+          --project tests/fixtures/simple
           --partition slice:${{ matrix.shard }}/4
           --output results-${{ matrix.shard }}.json
       - uses: actions/upload-artifact@v7
@@ -74,9 +81,11 @@ jobs:
     steps:
       - name: Install mutr
         run: |
-          URL=$(curl -fSL https://api.github.com/repos/EspressoSystems/mutr/releases/latest \
-            | jq -r '.assets[] | select(.name == "mutr-linux-amd64") | .browser_download_url')
-          curl -fL -o /usr/local/bin/mutr "$URL"
+          URL=$(curl -fSL -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+            https://api.github.com/repos/EspressoSystems/mutr/releases \
+            | jq -r '.[0].assets[] | select(.name == "mutr-linux-amd64") | .url')
+          curl -fL -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+            -H "Accept: application/octet-stream" -o /usr/local/bin/mutr "$URL"
           chmod +x /usr/local/bin/mutr
           mutr --version
       - uses: actions/download-artifact@v8
