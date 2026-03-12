@@ -23,9 +23,10 @@ jobs:
           solc --version
       - name: Install mutr
         run: |
-          URL=$(curl -fSL https://api.github.com/repos/EspressoSystems/mutr/releases/latest \
+          URL=$(curl -fSL -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+            https://api.github.com/repos/EspressoSystems/mutr/releases/latest \
             | jq -r '.assets[] | select(.name == "mutr-linux-amd64") | .browser_download_url')
-          curl -fL -o /usr/local/bin/mutr "$URL"
+          curl -fL -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" -o /usr/local/bin/mutr "$URL"
           chmod +x /usr/local/bin/mutr
           mutr --version
       - run: mutr generate --project tests/fixtures/simple --output ./mutants
@@ -51,9 +52,10 @@ jobs:
           solc --version
       - name: Install mutr
         run: |
-          URL=$(curl -fSL https://api.github.com/repos/EspressoSystems/mutr/releases/latest \
+          URL=$(curl -fSL -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+            https://api.github.com/repos/EspressoSystems/mutr/releases/latest \
             | jq -r '.assets[] | select(.name == "mutr-linux-amd64") | .browser_download_url')
-          curl -fL -o /usr/local/bin/mutr "$URL"
+          curl -fL -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" -o /usr/local/bin/mutr "$URL"
           chmod +x /usr/local/bin/mutr
           mutr --version
       - uses: actions/download-artifact@v8
@@ -77,9 +79,10 @@ jobs:
     steps:
       - name: Install mutr
         run: |
-          URL=$(curl -fSL https://api.github.com/repos/EspressoSystems/mutr/releases/latest \
+          URL=$(curl -fSL -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+            https://api.github.com/repos/EspressoSystems/mutr/releases/latest \
             | jq -r '.assets[] | select(.name == "mutr-linux-amd64") | .browser_download_url')
-          curl -fL -o /usr/local/bin/mutr "$URL"
+          curl -fL -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" -o /usr/local/bin/mutr "$URL"
           chmod +x /usr/local/bin/mutr
           mutr --version
       - uses: actions/download-artifact@v8
