@@ -1,0 +1,64 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        include:
+          - target: x86_64-unknown-linux-gnu
+            os: ubuntu-latest
+            artifact: mutr-linux-amd64
+            use_cross: false
+          - target: aarch64-unknown-linux-gnu
+            os: ubuntu-latest
+            artifact: mutr-linux-aarch64
+            use_cross: true
+          - target: aarch64-apple-darwin
+            os: macos-latest
+            artifact: mutr-macos-aarch64
+            use_cross: false
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+      - uses: Swatinem/rust-cache@v2
+      - name: Install cross
+        if: matrix.use_cross
+        uses: taiki-e/install-action@cross
+      - name: Build with cross
+        if: matrix.use_cross
+        run: cross build --release --target ${{ matrix.target }}
+      - name: Build with cargo
+        if: "!matrix.use_cross"
+        run: cargo build --release --target ${{ matrix.target }}
+      - name: Rename binary
+        run: cp target/${{ matrix.target }}/release/mutr ${{ matrix.artifact }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: ${{ matrix.artifact }}
+
+  release:
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: mutr-*
+          merge-multiple: true
+      - uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+          files: mutr-*

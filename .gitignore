@@ -22,6 +22,7 @@ target
 
 .*
 !.gitignore
+!.github/
 
 # Gambit mutation output
 gambit_out/
@@ -32,3 +33,4 @@ gambit_out/
 tmp/
 lcov.info
 result
+results-*.json

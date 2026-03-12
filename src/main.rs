@@ -1,5 +1,5 @@
 use anyhow::{Context, Result};
-use clap::{Parser, Subcommand};
+use clap::{Parser, Subcommand, ValueEnum};
 use mutr::config::{FoundryConfig, find_project_root, parse_foundry_toml, resolve_remappings};
 use mutr::generator::gambit::GambitGenerator;
 use mutr::generator::{GeneratorConfig, Mutant, MutationGenerator};
@@ -19,6 +19,12 @@ fn parse_workers(s: &str) -> std::result::Result<usize, String> {
         return Err("workers must be at least 1".to_string());
     }
     Ok(n)
+}
+
+#[derive(Clone, Copy, Debug, ValueEnum)]
+enum OutputFormat {
+    Text,
+    Markdown,
 }
 
 #[derive(Parser)]
@@ -151,6 +157,13 @@ enum Commands {
             value_name = "SCORE"
         )]
         fail_under: Option<f64>,
+
+        #[arg(
+            long,
+            default_value = "text",
+            help = "Output format (text or markdown)"
+        )]
+        format: OutputFormat,
     },
 }
 
@@ -206,8 +219,9 @@ fn main() -> Result<()> {
             result_files,
             output,
             fail_under,
+            format,
         } => {
-            cmd_report(manifest, result_files, output, fail_under)?;
+            cmd_report(manifest, result_files, output, fail_under, format)?;
         }
     }
 
@@ -408,7 +422,7 @@ fn run_mutation_testing(
         report
             .write_json(&output_path)
             .context("failed to write JSON report")?;
-        println!("Report written to: {}", output_path.display());
+        eprintln!("Report written to: {}", output_path.display());
     }
 
     if let Some(threshold) = fail_under
@@ -513,6 +527,7 @@ fn cmd_report(
     result_files: Vec<PathBuf>,
     output: Option<PathBuf>,
     fail_under: Option<f64>,
+    format: OutputFormat,
 ) -> Result<()> {
     let manifest = Manifest::read(&manifest_path).context("failed to read manifest")?;
 
@@ -527,13 +542,16 @@ fn cmd_report(
     }
 
     let report = Report::new(results);
-    report.print_summary(&manifest.mutants);
+    match format {
+        OutputFormat::Markdown => report.print_summary_markdown(&manifest.mutants),
+        OutputFormat::Text => report.print_summary(&manifest.mutants),
+    }
 
     if let Some(output_path) = output {
         report
             .write_json(&output_path)
             .context("failed to write JSON report")?;
-        println!("Report written to: {}", output_path.display());
+        eprintln!("Report written to: {}", output_path.display());
     }
 
     if let Some(threshold) = fail_under

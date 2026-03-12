@@ -64,7 +64,7 @@ fn test_run_with_json_output() {
         .arg(&output_path)
         .assert()
         .success()
-        .stdout(predicate::str::contains("Report written to"));
+        .stderr(predicate::str::contains("Report written to"));
 
     assert!(output_path.exists());
     let content = std::fs::read_to_string(&output_path).unwrap();
@@ -796,11 +796,54 @@ fn test_report_with_json_output() {
         .arg(&report_path)
         .assert()
         .success()
-        .stdout(predicate::str::contains("Report written to"));
+        .stderr(predicate::str::contains("Report written to"));
 
     assert!(report_path.exists());
     let content = std::fs::read_to_string(&report_path).unwrap();
     assert!(content.contains("mutation_score"));
+}
+
+#[test]
+fn test_report_with_markdown_format() {
+    let test_run = common::TestRun::from_fixture("simple");
+    let mutants_dir = test_run.project_path().join("mutants_out");
+    let results_path = test_run.project_path().join("results.json");
+
+    // Generate
+    mutr_cmd()
+        .arg("generate")
+        .arg("--project")
+        .arg(test_run.project_path())
+        .arg("--output")
+        .arg(&mutants_dir)
+        .assert()
+        .success();
+
+    // Test
+    mutr_cmd()
+        .arg("test")
+        .arg("--manifest")
+        .arg(mutants_dir.join("manifest.json"))
+        .arg("--project")
+        .arg(test_run.project_path())
+        .arg("--output")
+        .arg(&results_path)
+        .assert()
+        .success();
+
+    // Report with markdown format
+    mutr_cmd()
+        .arg("report")
+        .arg(mutants_dir.join("manifest.json"))
+        .arg(&results_path)
+        .arg("--format")
+        .arg("markdown")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains(
+            "| ID | File:Line | Operator | Status | Killed By |",
+        ))
+        .stdout(predicate::str::contains("**Mutation score:"));
 }
 
 #[test]

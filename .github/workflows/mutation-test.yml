@@ -1,0 +1,91 @@
+name: Mutation Test
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  generate:
+    runs-on: ubuntu-latest
+    env:
+      FOUNDRY_SOLC: /usr/local/bin/solc
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - uses: foundry-rs/foundry-toolchain@v1
+      - name: Install solc
+        run: |
+          curl -L -o /usr/local/bin/solc https://github.com/ethereum/solidity/releases/download/v0.8.30/solc-static-linux
+          chmod +x /usr/local/bin/solc
+      - run: cargo build --release
+      - run: ./target/release/mutr generate --project tests/fixtures/simple --output ./mutants
+      - uses: actions/upload-artifact@v4
+        with:
+          name: mutants
+          path: mutants/
+      - uses: actions/upload-artifact@v4
+        with:
+          name: mutr-binary
+          path: target/release/mutr
+
+  test-shard:
+    needs: generate
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        shard: [1, 2, 3, 4]
+    env:
+      FOUNDRY_SOLC: /usr/local/bin/solc
+    steps:
+      - uses: actions/checkout@v4
+      - uses: foundry-rs/foundry-toolchain@v1
+      - name: Install solc
+        run: |
+          curl -L -o /usr/local/bin/solc https://github.com/ethereum/solidity/releases/download/v0.8.30/solc-static-linux
+          chmod +x /usr/local/bin/solc
+      - uses: actions/download-artifact@v4
+        with:
+          name: mutants
+          path: mutants
+      - uses: actions/download-artifact@v4
+        with:
+          name: mutr-binary
+      - run: chmod +x ./mutr
+      - run: >-
+          ./mutr test
+          --manifest ./mutants/manifest.json
+          --project tests/fixtures/simple
+          --partition slice:${{ matrix.shard }}/4
+          --output results-${{ matrix.shard }}.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: results-${{ matrix.shard }}
+          path: results-${{ matrix.shard }}.json
+
+  report:
+    needs: test-shard
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: mutants
+          path: mutants
+      - uses: actions/download-artifact@v4
+        with:
+          name: mutr-binary
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: results-*
+          merge-multiple: true
+      - run: chmod +x ./mutr
+      - run: >-
+          ./mutr report ./mutants/manifest.json results-*.json
+          --format markdown --output report.json
+          | tee "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: mutation-report
+          path: report.json

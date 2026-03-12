@@ -1,0 +1,73 @@
+name: Lint
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  fmt:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+      - run: cargo fmt --check
+
+  clippy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo clippy --all-targets -- -D warnings
+
+  test:
+    runs-on: ubuntu-latest
+    env:
+      FOUNDRY_SOLC: /usr/local/bin/solc
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - uses: taiki-e/install-action@nextest
+      - uses: foundry-rs/foundry-toolchain@v1
+      - name: Install solc
+        run: |
+          curl -L -o /usr/local/bin/solc https://github.com/ethereum/solidity/releases/download/v0.8.30/solc-static-linux
+          chmod +x /usr/local/bin/solc
+      - run: cargo nextest run
+
+  coverage:
+    runs-on: ubuntu-latest
+    env:
+      FOUNDRY_SOLC: /usr/local/bin/solc
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: llvm-tools-preview
+      - uses: Swatinem/rust-cache@v2
+      - uses: taiki-e/install-action@cargo-llvm-cov
+      - uses: foundry-rs/foundry-toolchain@v1
+      - name: Install solc
+        run: |
+          curl -L -o /usr/local/bin/solc https://github.com/ethereum/solidity/releases/download/v0.8.30/solc-static-linux
+          chmod +x /usr/local/bin/solc
+      - run: cargo llvm-cov --fail-under-lines 99
+
+  typos:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: crate-ci/typos@v1
+
+  prettier:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: npx prettier@3 --check .
