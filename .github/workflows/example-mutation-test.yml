@@ -24,8 +24,8 @@ jobs:
       - name: Install mutr
         run: |
           URL=$(curl -fSL -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
-            https://api.github.com/repos/EspressoSystems/mutr/releases/latest \
-            | jq -r '.assets[] | select(.name == "mutr-linux-amd64") | .browser_download_url')
+            https://api.github.com/repos/EspressoSystems/mutr/releases \
+            | jq -r '.[0].assets[] | select(.name == "mutr-linux-amd64") | .browser_download_url')
           curl -fL -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" -o /usr/local/bin/mutr "$URL"
           chmod +x /usr/local/bin/mutr
           mutr --version
@@ -53,8 +53,8 @@ jobs:
       - name: Install mutr
         run: |
           URL=$(curl -fSL -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
-            https://api.github.com/repos/EspressoSystems/mutr/releases/latest \
-            | jq -r '.assets[] | select(.name == "mutr-linux-amd64") | .browser_download_url')
+            https://api.github.com/repos/EspressoSystems/mutr/releases \
+            | jq -r '.[0].assets[] | select(.name == "mutr-linux-amd64") | .browser_download_url')
           curl -fL -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" -o /usr/local/bin/mutr "$URL"
           chmod +x /usr/local/bin/mutr
           mutr --version
@@ -80,8 +80,8 @@ jobs:
       - name: Install mutr
         run: |
           URL=$(curl -fSL -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
-            https://api.github.com/repos/EspressoSystems/mutr/releases/latest \
-            | jq -r '.assets[] | select(.name == "mutr-linux-amd64") | .browser_download_url')
+            https://api.github.com/repos/EspressoSystems/mutr/releases \
+            | jq -r '.[0].assets[] | select(.name == "mutr-linux-amd64") | .browser_download_url')
           curl -fL -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" -o /usr/local/bin/mutr "$URL"
           chmod +x /usr/local/bin/mutr
           mutr --version
