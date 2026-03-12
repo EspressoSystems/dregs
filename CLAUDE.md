@@ -1,4 +1,4 @@
-# mutr - Solidity Mutation Testing Runner
+# dregs - Solidity Mutation Testing Runner
 
 ## Overview
 
@@ -17,10 +17,10 @@ A Rust CLI tool that runs mutation testing for Solidity projects using Foundry. 
 ### Nix Package with Crane (Complete)
 
 - [x] Add crane input to flake.nix
-- [x] Build mutr with craneLib.buildPackage
+- [x] Build dregs with craneLib.buildPackage
 - [x] Wrap binary to include forge in PATH
 - [x] Export packages.default and apps.default
-- [x] Usage: `nix run github:sveitser/mutr -- run --project .`
+- [x] Usage: `nix run github:sveitser/dregs -- run --project .`
 
 ### Foundry.toml Configuration (Complete)
 
@@ -47,13 +47,13 @@ A Rust CLI tool that runs mutation testing for Solidity projects using Foundry. 
 
 ### Target Configuration (Complete)
 
-- [x] `mutr.toml` config file with `[[target]]` sections
+- [x] `dregs.toml` config file with `[[target]]` sections
 - [x] Per-target `files`, `contracts`, `functions`, `forge_args`
 - [x] Glob pattern support in target files
-- [x] Conflict detection: error when both mutr.toml and CLI files/forge_args
+- [x] Conflict detection: error when both dregs.toml and CLI files/forge_args
 - [x] Per-mutant `forge_args` through generate/manifest/test pipeline
 - [x] Contract and function filters passed to gambit
-- [x] `--config` flag to override mutr.toml path
+- [x] `--config` flag to override dregs.toml path
 - [x] Backward compatible: old manifests without forge_args deserialize fine
 
 ### Incremental Testing
@@ -84,7 +84,7 @@ Use the rust-dev agent for Rust implementation tasks.
 - `just cov-text` - Show annotated source with hit counts per line
 - `just cov-regions` - Show uncovered regions from JSON coverage data
 - `just cov-functions` - Show uncovered functions from JSON coverage data
-- `just example` - Run mutr on the simple fixture
+- `just example` - Run dregs on the simple fixture
 - `just clean` - Remove generated output
 
 ### Commits
@@ -124,12 +124,12 @@ Use semantic commit messages: `type: description`
 ## Architecture
 
 ```
-mutr
+dregs
 ├── src/
 │   ├── main.rs           # Thin entry point, delegates to cli::run
 │   ├── lib.rs            # Library root, test utilities
 │   ├── cli.rs            # CLI logic: clap structs, subcommands, orchestration
-│   ├── config.rs         # foundry.toml + mutr.toml parsing, project root detection, remapping resolution
+│   ├── config.rs         # foundry.toml + dregs.toml parsing, project root detection, remapping resolution
 │   ├── generator/
 │   │   ├── mod.rs        # Generator trait, Mutant type, FileTarget
 │   │   └── gambit.rs     # Gambit implementation with contract/function filters
@@ -140,7 +140,7 @@ mutr
 ├── .github/
 │   ├── actions/
 │   │   ├── install-solc/ # Composite action: install solc binary
-│   │   └── install-mutr/ # Composite action: install mutr from releases
+│   │   └── install-dregs/ # Composite action: install dregs from releases
 │   └── workflows/
 │       ├── lint.yml      # fmt, clippy, typos, prettier
 │       ├── test.yml      # nextest, coverage
@@ -163,7 +163,7 @@ mutr
 - serde + serde_json: Config and report serialization
 - tempfile: Temp directory management
 - thiserror: Typed errors for testable error paths
-- toml: foundry.toml + mutr.toml parsing
+- toml: foundry.toml + dregs.toml parsing
 - anyhow: Top-level error handling (main.rs only)
 
 ### External Tools (must be in PATH)
@@ -195,4 +195,4 @@ mutr
 - **ID-based partitioning**: Round-robin by mutant ID (contiguous 1-based from gambit) for deterministic shard assignment
 - **Manifest with relative paths**: Stored relative to manifest dir, resolved on read for portability across CI runners
 - **Per-mutant forge_args**: Each mutant carries its own forge_args from the target config, enabling different test filters per contract
-- **mutr.toml mutually exclusive with CLI files/forge_args**: Prevents ambiguous configuration; global flags (workers, mutations, etc.) always from CLI
+- **dregs.toml mutually exclusive with CLI files/forge_args**: Prevents ambiguous configuration; global flags (workers, mutations, etc.) always from CLI

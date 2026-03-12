@@ -139,7 +139,7 @@
 
           cargoArtifacts = craneLib.buildDepsOnly commonArgs;
 
-          mutr-unwrapped = craneLib.buildPackage (commonArgs // {
+          dregs-unwrapped = craneLib.buildPackage (commonArgs // {
             inherit cargoArtifacts;
             nativeCheckInputs = [ pkgs.foundry pkgs.solc-bin."0.8.30" ];
             preCheck = ''
@@ -148,25 +148,25 @@
             '';
           });
 
-          mutr = pkgs.runCommand "mutr"
+          dregs = pkgs.runCommand "dregs"
             {
               nativeBuildInputs = [ pkgs.makeWrapper ];
             } ''
             mkdir -p $out/bin
-            makeWrapper ${mutr-unwrapped}/bin/mutr $out/bin/mutr \
+            makeWrapper ${dregs-unwrapped}/bin/dregs $out/bin/dregs \
               --prefix PATH : ${pkgs.lib.makeBinPath [ pkgs.foundry ]}
           '';
         in
         {
-          default = mutr;
-          unwrapped = mutr-unwrapped;
+          default = dregs;
+          unwrapped = dregs-unwrapped;
         }
       );
 
       apps = forAllSystems (system: {
         default = {
           type = "app";
-          program = "${self.packages.${system}.default}/bin/mutr";
+          program = "${self.packages.${system}.default}/bin/dregs";
         };
       });
     };

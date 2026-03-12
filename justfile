@@ -68,7 +68,7 @@ check *args:
 clean:
     rm -rfv gambit_out lcov.info tests/fixtures/*/gambit_out tests/fixtures/*/out tests/fixtures/*/cache
 
-# Run mutr on the simple fixture
+# Run dregs on the simple fixture
 example:
     cargo run -- run --project tests/fixtures/simple
 

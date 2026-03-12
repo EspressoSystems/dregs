@@ -21,16 +21,16 @@ jobs:
           chmod +x /usr/local/bin/solc
           echo "FOUNDRY_SOLC=/usr/local/bin/solc" >> "$GITHUB_ENV"
           solc --version
-      - name: Install mutr
+      - name: Install dregs
         run: |
           URL=$(curl -fSL -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
-            https://api.github.com/repos/EspressoSystems/mutr/releases \
-            | jq -r '.[0].assets[] | select(.name == "mutr-linux-amd64") | .url')
+            https://api.github.com/repos/EspressoSystems/dregs/releases \
+            | jq -r '.[0].assets[] | select(.name == "dregs-linux-amd64") | .url')
           curl -fL -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
-            -H "Accept: application/octet-stream" -o /usr/local/bin/mutr "$URL"
-          chmod +x /usr/local/bin/mutr
-          mutr --version
-      - run: mutr generate --project tests/fixtures/simple --output ./mutants
+            -H "Accept: application/octet-stream" -o /usr/local/bin/dregs "$URL"
+          chmod +x /usr/local/bin/dregs
+          dregs --version
+      - run: dregs generate --project tests/fixtures/simple --output ./mutants
       - uses: actions/upload-artifact@v7
         with:
           name: mutants
@@ -51,21 +51,21 @@ jobs:
           chmod +x /usr/local/bin/solc
           echo "FOUNDRY_SOLC=/usr/local/bin/solc" >> "$GITHUB_ENV"
           solc --version
-      - name: Install mutr
+      - name: Install dregs
         run: |
           URL=$(curl -fSL -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
-            https://api.github.com/repos/EspressoSystems/mutr/releases \
-            | jq -r '.[0].assets[] | select(.name == "mutr-linux-amd64") | .url')
+            https://api.github.com/repos/EspressoSystems/dregs/releases \
+            | jq -r '.[0].assets[] | select(.name == "dregs-linux-amd64") | .url')
           curl -fL -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
-            -H "Accept: application/octet-stream" -o /usr/local/bin/mutr "$URL"
-          chmod +x /usr/local/bin/mutr
-          mutr --version
+            -H "Accept: application/octet-stream" -o /usr/local/bin/dregs "$URL"
+          chmod +x /usr/local/bin/dregs
+          dregs --version
       - uses: actions/download-artifact@v8
         with:
           name: mutants
           path: mutants
       - run: >-
-          mutr test
+          dregs test
           --manifest ./mutants/manifest.json
           --project tests/fixtures/simple
           --partition slice:${{ matrix.shard }}/4
@@ -79,15 +79,15 @@ jobs:
     needs: test-shard
     runs-on: ubuntu-latest
     steps:
-      - name: Install mutr
+      - name: Install dregs
         run: |
           URL=$(curl -fSL -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
-            https://api.github.com/repos/EspressoSystems/mutr/releases \
-            | jq -r '.[0].assets[] | select(.name == "mutr-linux-amd64") | .url')
+            https://api.github.com/repos/EspressoSystems/dregs/releases \
+            | jq -r '.[0].assets[] | select(.name == "dregs-linux-amd64") | .url')
           curl -fL -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
-            -H "Accept: application/octet-stream" -o /usr/local/bin/mutr "$URL"
-          chmod +x /usr/local/bin/mutr
-          mutr --version
+            -H "Accept: application/octet-stream" -o /usr/local/bin/dregs "$URL"
+          chmod +x /usr/local/bin/dregs
+          dregs --version
       - uses: actions/download-artifact@v8
         with:
           name: mutants
@@ -97,6 +97,6 @@ jobs:
           pattern: results-*
           merge-multiple: true
       - run: >-
-          mutr report ./mutants/manifest.json results-*.json
+          dregs report ./mutants/manifest.json results-*.json
           --format markdown
           | tee "$GITHUB_STEP_SUMMARY"

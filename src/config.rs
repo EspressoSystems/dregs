@@ -11,8 +11,8 @@ pub enum ConfigError {
     ReadError(#[from] std::io::Error),
     #[error("failed to parse foundry.toml: {0}")]
     ParseError(#[from] toml::de::Error),
-    #[error("invalid mutr.toml: {0}")]
-    MutrConfigError(String),
+    #[error("invalid dregs.toml: {0}")]
+    DregsConfigError(String),
 }
 
 pub type Result<T> = std::result::Result<T, ConfigError>;
@@ -84,7 +84,7 @@ pub fn resolve_remappings(project_root: &Path) -> Vec<String> {
 }
 
 #[derive(Debug, Clone, Deserialize)]
-pub struct MutrConfig {
+pub struct DregsConfig {
     #[serde(rename = "target")]
     pub targets: Vec<TargetConfig>,
 }
@@ -97,16 +97,16 @@ pub struct TargetConfig {
     pub forge_args: Option<Vec<String>>,
 }
 
-pub fn parse_mutr_toml(
+pub fn parse_dregs_toml(
     project_root: &Path,
     config_path: Option<&Path>,
-) -> Result<Option<MutrConfig>> {
+) -> Result<Option<DregsConfig>> {
     let toml_path = config_path
         .map(|p| p.to_path_buf())
-        .unwrap_or_else(|| project_root.join("mutr.toml"));
+        .unwrap_or_else(|| project_root.join("dregs.toml"));
     if !toml_path.exists() {
         if config_path.is_some() {
-            return Err(ConfigError::MutrConfigError(format!(
+            return Err(ConfigError::DregsConfigError(format!(
                 "config file not found: {}",
                 toml_path.display()
             )));
@@ -115,18 +115,18 @@ pub fn parse_mutr_toml(
     }
 
     let content = fs::read_to_string(&toml_path)?;
-    let config: MutrConfig =
-        toml::from_str(&content).map_err(|e| ConfigError::MutrConfigError(e.to_string()))?;
+    let config: DregsConfig =
+        toml::from_str(&content).map_err(|e| ConfigError::DregsConfigError(e.to_string()))?;
 
     if config.targets.is_empty() {
-        return Err(ConfigError::MutrConfigError(
+        return Err(ConfigError::DregsConfigError(
             "no targets defined".to_string(),
         ));
     }
 
     for (i, t) in config.targets.iter().enumerate() {
         if t.files.is_empty() {
-            return Err(ConfigError::MutrConfigError(format!(
+            return Err(ConfigError::DregsConfigError(format!(
                 "target {} has no files",
                 i + 1
             )));
@@ -301,16 +301,16 @@ optimizer = true
     }
 
     #[test]
-    fn test_parse_mutr_toml_not_found() {
+    fn test_parse_dregs_toml_not_found() {
         let temp = TempDir::new().unwrap();
-        let result = parse_mutr_toml(temp.path(), None).unwrap();
+        let result = parse_dregs_toml(temp.path(), None).unwrap();
         assert!(result.is_none());
     }
 
     #[test]
-    fn test_parse_mutr_toml_ok() {
+    fn test_parse_dregs_toml_ok() {
         let temp = TempDir::new().unwrap();
-        temp.child("mutr.toml")
+        temp.child("dregs.toml")
             .write_str(
                 r#"
 [[target]]
@@ -325,7 +325,7 @@ files = ["src/B.sol", "src/C.sol"]
             )
             .unwrap();
 
-        let config = parse_mutr_toml(temp.path(), None).unwrap().unwrap();
+        let config = parse_dregs_toml(temp.path(), None).unwrap().unwrap();
         assert_eq!(config.targets.len(), 2);
 
         let t0 = &config.targets[0];
@@ -345,27 +345,27 @@ files = ["src/B.sol", "src/C.sol"]
     }
 
     #[test]
-    fn test_parse_mutr_toml_invalid_toml() {
+    fn test_parse_dregs_toml_invalid_toml() {
         let temp = TempDir::new().unwrap();
-        temp.child("mutr.toml")
+        temp.child("dregs.toml")
             .write_str("not valid { toml }")
             .unwrap();
-        let result = parse_mutr_toml(temp.path(), None);
+        let result = parse_dregs_toml(temp.path(), None);
         assert!(result.is_err());
         assert!(
             result
                 .unwrap_err()
                 .to_string()
-                .contains("invalid mutr.toml"),
-            "error should mention invalid mutr.toml"
+                .contains("invalid dregs.toml"),
+            "error should mention invalid dregs.toml"
         );
     }
 
     #[test]
-    fn test_parse_mutr_toml_empty_targets() {
+    fn test_parse_dregs_toml_empty_targets() {
         let temp = TempDir::new().unwrap();
-        temp.child("mutr.toml").write_str("target = []\n").unwrap();
-        let result = parse_mutr_toml(temp.path(), None);
+        temp.child("dregs.toml").write_str("target = []\n").unwrap();
+        let result = parse_dregs_toml(temp.path(), None);
         assert!(result.is_err());
         assert!(
             result
@@ -377,9 +377,9 @@ files = ["src/B.sol", "src/C.sol"]
     }
 
     #[test]
-    fn test_parse_mutr_toml_minimal_target() {
+    fn test_parse_dregs_toml_minimal_target() {
         let temp = TempDir::new().unwrap();
-        temp.child("mutr.toml")
+        temp.child("dregs.toml")
             .write_str(
                 r#"
 [[target]]
@@ -388,7 +388,7 @@ files = ["src/**/*.sol"]
             )
             .unwrap();
 
-        let config = parse_mutr_toml(temp.path(), None).unwrap().unwrap();
+        let config = parse_dregs_toml(temp.path(), None).unwrap().unwrap();
         assert_eq!(config.targets.len(), 1);
         assert_eq!(config.targets[0].files, vec!["src/**/*.sol"]);
         assert!(config.targets[0].contracts.is_none());
@@ -397,22 +397,22 @@ files = ["src/**/*.sol"]
     }
 
     #[test]
-    fn test_parse_mutr_toml_explicit_path() {
+    fn test_parse_dregs_toml_explicit_path() {
         let temp = TempDir::new().unwrap();
         let custom = temp.path().join("custom.toml");
         std::fs::write(&custom, "[[target]]\nfiles = [\"src/A.sol\"]\n").unwrap();
 
-        let config = parse_mutr_toml(temp.path(), Some(&custom))
+        let config = parse_dregs_toml(temp.path(), Some(&custom))
             .unwrap()
             .unwrap();
         assert_eq!(config.targets.len(), 1);
     }
 
     #[test]
-    fn test_parse_mutr_toml_explicit_path_not_found() {
+    fn test_parse_dregs_toml_explicit_path_not_found() {
         let temp = TempDir::new().unwrap();
         let missing = temp.path().join("missing.toml");
-        let result = parse_mutr_toml(temp.path(), Some(&missing));
+        let result = parse_dregs_toml(temp.path(), Some(&missing));
         assert!(result.is_err());
         assert!(
             result
@@ -423,12 +423,12 @@ files = ["src/**/*.sol"]
     }
 
     #[test]
-    fn test_parse_mutr_toml_empty_files_in_target() {
+    fn test_parse_dregs_toml_empty_files_in_target() {
         let temp = TempDir::new().unwrap();
-        temp.child("mutr.toml")
+        temp.child("dregs.toml")
             .write_str("[[target]]\nfiles = []\n")
             .unwrap();
-        let result = parse_mutr_toml(temp.path(), None);
+        let result = parse_dregs_toml(temp.path(), None);
         assert!(result.is_err());
         assert!(result.unwrap_err().to_string().contains("has no files"));
     }
