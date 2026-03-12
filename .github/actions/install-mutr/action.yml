@@ -21,11 +21,13 @@ runs:
         if [ "${{ inputs.version }}" = "latest" ]; then
           URL=$(curl -fSL ${AUTH_HEADER:+-H "$AUTH_HEADER"} \
             https://api.github.com/repos/EspressoSystems/mutr/releases \
-            | jq -r '.[0].assets[] | select(.name == "mutr-linux-amd64") | .browser_download_url')
+            | jq -r '.[0].assets[] | select(.name == "mutr-linux-amd64") | .url')
         else
-          URL="https://github.com/EspressoSystems/mutr/releases/download/v${{ inputs.version }}/mutr-linux-amd64"
+          URL="https://api.github.com/repos/EspressoSystems/mutr/releases/assets/$(curl -fSL ${AUTH_HEADER:+-H "$AUTH_HEADER"} \
+            https://api.github.com/repos/EspressoSystems/mutr/releases/tags/v${{ inputs.version }} \
+            | jq -r '.assets[] | select(.name == "mutr-linux-amd64") | .id')"
         fi
-        curl -fL ${AUTH_HEADER:+-H "$AUTH_HEADER"} -o /usr/local/bin/mutr "$URL"
+        curl -fL ${AUTH_HEADER:+-H "$AUTH_HEADER"} -H "Accept: application/octet-stream" -o /usr/local/bin/mutr "$URL"
         chmod +x /usr/local/bin/mutr
         mutr --version
       shell: bash

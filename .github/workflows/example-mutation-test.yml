@@ -25,8 +25,9 @@ jobs:
         run: |
           URL=$(curl -fSL -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
             https://api.github.com/repos/EspressoSystems/mutr/releases \
-            | jq -r '.[0].assets[] | select(.name == "mutr-linux-amd64") | .browser_download_url')
-          curl -fL -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" -o /usr/local/bin/mutr "$URL"
+            | jq -r '.[0].assets[] | select(.name == "mutr-linux-amd64") | .url')
+          curl -fL -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+            -H "Accept: application/octet-stream" -o /usr/local/bin/mutr "$URL"
           chmod +x /usr/local/bin/mutr
           mutr --version
       - run: mutr generate --project tests/fixtures/simple --output ./mutants
@@ -54,8 +55,9 @@ jobs:
         run: |
           URL=$(curl -fSL -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
             https://api.github.com/repos/EspressoSystems/mutr/releases \
-            | jq -r '.[0].assets[] | select(.name == "mutr-linux-amd64") | .browser_download_url')
-          curl -fL -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" -o /usr/local/bin/mutr "$URL"
+            | jq -r '.[0].assets[] | select(.name == "mutr-linux-amd64") | .url')
+          curl -fL -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+            -H "Accept: application/octet-stream" -o /usr/local/bin/mutr "$URL"
           chmod +x /usr/local/bin/mutr
           mutr --version
       - uses: actions/download-artifact@v8
@@ -81,8 +83,9 @@ jobs:
         run: |
           URL=$(curl -fSL -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
             https://api.github.com/repos/EspressoSystems/mutr/releases \
-            | jq -r '.[0].assets[] | select(.name == "mutr-linux-amd64") | .browser_download_url')
-          curl -fL -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" -o /usr/local/bin/mutr "$URL"
+            | jq -r '.[0].assets[] | select(.name == "mutr-linux-amd64") | .url')
+          curl -fL -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+            -H "Accept: application/octet-stream" -o /usr/local/bin/mutr "$URL"
           chmod +x /usr/local/bin/mutr
           mutr --version
       - uses: actions/download-artifact@v8
