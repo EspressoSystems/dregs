@@ -4,11 +4,9 @@
 
 A Rust CLI tool that runs mutation testing for Solidity projects using Foundry. Uses Gambit for mutation generation with an abstraction layer for future generator support.
 
-## Status: v0.4 Complete
-
 ## Roadmap
 
-### MVP (Complete)
+### Core Mutation Testing (Complete)
 
 - [x] Project setup (flake.nix, Cargo.toml)
 - [x] Gambit library integration
@@ -16,7 +14,7 @@ A Rust CLI tool that runs mutation testing for Solidity projects using Foundry. 
 - [x] Report mutation score + surviving mutants + which test killed
 - [x] Wire up CLI to run full mutation testing flow
 
-### v0.2 - Nix Package with Crane (Complete)
+### Nix Package with Crane (Complete)
 
 - [x] Add crane input to flake.nix
 - [x] Build mutr with craneLib.buildPackage
@@ -24,7 +22,7 @@ A Rust CLI tool that runs mutation testing for Solidity projects using Foundry. 
 - [x] Export packages.default and apps.default
 - [x] Usage: `nix run github:sveitser/mutr -- run --project .`
 
-### v0.3 - Foundry.toml Configuration (Complete)
+### Foundry.toml Configuration (Complete)
 
 - [x] Parse foundry.toml for project settings
 - [x] Auto-detect project root from file paths
@@ -35,7 +33,7 @@ A Rust CLI tool that runs mutation testing for Solidity projects using Foundry. 
 - [x] Note: via_ir not supported by gambit upstream
 - [x] Note: gambit expects solc binary path, version strings from foundry.toml are ignored with warning
 
-### v0.4 - Parallel Execution & CI Sharding (Complete)
+### Parallel Execution & CI Sharding (Complete)
 
 - [x] Run multiple mutants concurrently with rayon
 - [x] Configurable `--workers N` flag (default 1)
@@ -47,12 +45,12 @@ A Rust CLI tool that runs mutation testing for Solidity projects using Foundry. 
 - [x] GitHub Actions CI/CD (lint, test, coverage, mutation test, release)
 - [x] `report --format markdown` for CI step summaries
 
-### v0.5 - Incremental Testing
+### Incremental Testing
 
 - [ ] Cache test results by mutant hash
 - [ ] Only re-test changed mutants
 
-### v0.6 - Coverage Filtering
+### Coverage Filtering
 
 - [ ] Parse forge coverage output
 - [ ] Only mutate lines covered by tests

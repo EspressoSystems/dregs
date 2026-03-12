@@ -42,11 +42,30 @@ jobs:
       contents: write
     steps:
       - uses: actions/checkout@v4
+      - name: Verify Cargo.toml version matches tag
+        shell: bash
+        run: |
+          cargo_version=$(cargo metadata --format-version=1 --no-deps | jq -r '.packages[] | select(.name == "mutr") | .version')
+          tag_version=${GITHUB_REF_NAME#v}
+          if [ "$cargo_version" != "$tag_version" ]; then
+            echo "::error::Version mismatch: Cargo.toml=$cargo_version tag=$tag_version"
+            exit 1
+          fi
       - uses: actions/download-artifact@v4
         with:
           pattern: mutr-*
           merge-multiple: true
+      - name: Detect pre-release
+        id: prerelease
+        shell: bash
+        run: |
+          if [[ "$GITHUB_REF_NAME" == *-* ]]; then
+            echo "is_prerelease=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "is_prerelease=false" >> "$GITHUB_OUTPUT"
+          fi
       - uses: softprops/action-gh-release@v2
         with:
           generate_release_notes: true
           files: mutr-*
+          prerelease: ${{ steps.prerelease.outputs.is_prerelease }}
