@@ -10,7 +10,7 @@ jobs:
   generate:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - uses: foundry-rs/foundry-toolchain@v1
       - name: Install solc
         run: |
@@ -26,7 +26,7 @@ jobs:
           chmod +x /usr/local/bin/mutr
           mutr --version
       - run: mutr generate --project . --output ./mutants
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: mutants
           path: mutants/
@@ -38,7 +38,7 @@ jobs:
       matrix:
         shard: [1, 2, 3, 4]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - uses: foundry-rs/foundry-toolchain@v1
       - name: Install solc
         run: |
@@ -53,7 +53,7 @@ jobs:
           curl -fL -o /usr/local/bin/mutr "$URL"
           chmod +x /usr/local/bin/mutr
           mutr --version
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: mutants
           path: mutants
@@ -63,7 +63,7 @@ jobs:
           --project .
           --partition slice:${{ matrix.shard }}/4
           --output results-${{ matrix.shard }}.json
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: results-${{ matrix.shard }}
           path: results-${{ matrix.shard }}.json
@@ -79,11 +79,11 @@ jobs:
           curl -fL -o /usr/local/bin/mutr "$URL"
           chmod +x /usr/local/bin/mutr
           mutr --version
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: mutants
           path: mutants
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           pattern: results-*
           merge-multiple: true

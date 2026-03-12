@@ -10,17 +10,17 @@ jobs:
   generate:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - uses: Swatinem/rust-cache@v2
       - uses: foundry-rs/foundry-toolchain@v1
       - uses: ./.github/actions/install-solc
       - run: cargo build --release
       - run: ./target/release/mutr generate --project tests/fixtures/simple --output ./mutants
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: mutants
           path: mutants/
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: mutr-binary
           path: target/release/mutr
@@ -32,14 +32,14 @@ jobs:
       matrix:
         shard: [1, 2, 3, 4]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - uses: foundry-rs/foundry-toolchain@v1
       - uses: ./.github/actions/install-solc
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: mutants
           path: mutants
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: mutr-binary
       - run: chmod +x ./mutr
@@ -49,7 +49,7 @@ jobs:
           --project tests/fixtures/simple
           --partition slice:${{ matrix.shard }}/4
           --output results-${{ matrix.shard }}.json
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: results-${{ matrix.shard }}
           path: results-${{ matrix.shard }}.json
@@ -58,14 +58,14 @@ jobs:
     needs: test-shard
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: mutants
           path: mutants
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: mutr-binary
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           pattern: results-*
           merge-multiple: true
@@ -74,7 +74,7 @@ jobs:
           ./mutr report ./mutants/manifest.json results-*.json
           --format markdown --output report.json
           | tee "$GITHUB_STEP_SUMMARY"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: mutation-report
           path: report.json
