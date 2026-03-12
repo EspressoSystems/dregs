@@ -6,30 +6,16 @@ on:
   pull_request:
   workflow_dispatch:
 
-env:
-  SOLC_VERSION: "0.8.30"
-
 jobs:
   generate:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
       - uses: foundry-rs/foundry-toolchain@v1
-      - name: Install solc
-        run: |
-          curl -fL -o /usr/local/bin/solc https://github.com/ethereum/solidity/releases/download/v${SOLC_VERSION}/solc-static-linux
-          chmod +x /usr/local/bin/solc
-          echo "FOUNDRY_SOLC=/usr/local/bin/solc" >> "$GITHUB_ENV"
-          solc --version
-      - name: Install dregs
-        run: |
-          URL=$(curl -fSL -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
-            https://api.github.com/repos/EspressoSystems/dregs/releases \
-            | jq -r '.[0].assets[] | select(.name == "dregs-linux-amd64") | .url')
-          curl -fL -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
-            -H "Accept: application/octet-stream" -o /usr/local/bin/dregs "$URL"
-          chmod +x /usr/local/bin/dregs
-          dregs --version
+      - uses: ./.github/actions/install-solc
+      - uses: ./.github/actions/install-dregs
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
       - run: dregs generate --project tests/fixtures/simple --output ./mutants
       - uses: actions/upload-artifact@v7
         with:
@@ -45,21 +31,10 @@ jobs:
     steps:
       - uses: actions/checkout@v6
       - uses: foundry-rs/foundry-toolchain@v1
-      - name: Install solc
-        run: |
-          curl -fL -o /usr/local/bin/solc https://github.com/ethereum/solidity/releases/download/v${SOLC_VERSION}/solc-static-linux
-          chmod +x /usr/local/bin/solc
-          echo "FOUNDRY_SOLC=/usr/local/bin/solc" >> "$GITHUB_ENV"
-          solc --version
-      - name: Install dregs
-        run: |
-          URL=$(curl -fSL -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
-            https://api.github.com/repos/EspressoSystems/dregs/releases \
-            | jq -r '.[0].assets[] | select(.name == "dregs-linux-amd64") | .url')
-          curl -fL -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
-            -H "Accept: application/octet-stream" -o /usr/local/bin/dregs "$URL"
-          chmod +x /usr/local/bin/dregs
-          dregs --version
+      - uses: ./.github/actions/install-solc
+      - uses: ./.github/actions/install-dregs
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
       - uses: actions/download-artifact@v8
         with:
           name: mutants
@@ -79,15 +54,10 @@ jobs:
     needs: test-shard
     runs-on: ubuntu-latest
     steps:
-      - name: Install dregs
-        run: |
-          URL=$(curl -fSL -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
-            https://api.github.com/repos/EspressoSystems/dregs/releases \
-            | jq -r '.[0].assets[] | select(.name == "dregs-linux-amd64") | .url')
-          curl -fL -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
-            -H "Accept: application/octet-stream" -o /usr/local/bin/dregs "$URL"
-          chmod +x /usr/local/bin/dregs
-          dregs --version
+      - uses: actions/checkout@v6
+      - uses: ./.github/actions/install-dregs
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
       - uses: actions/download-artifact@v8
         with:
           name: mutants

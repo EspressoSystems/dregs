@@ -100,6 +100,8 @@ dregs report ./mutants/manifest.json results-*.json --fail-under 0.8
 
 See [`.github/workflows/example-mutation-test.yml`](.github/workflows/example-mutation-test.yml) for a sharded GitHub Actions workflow using release binaries.
 
+Since the repository is private, `GITHUB_TOKEN` is required to download release assets. The [install-dregs action](.github/actions/install-dregs/action.yml) handles this — pass `github-token: ${{ secrets.GITHUB_TOKEN }}`.
+
 ### Target configuration
 
 Create a `dregs.toml` in your project root to pair contracts with their tests. See [`tests/fixtures/simple/dregs.toml`](tests/fixtures/simple/dregs.toml) for a working example.
