@@ -27,3 +27,7 @@ clean:
 # Run mutr on the simple fixture
 example:
     cargo run -- run --project tests/fixtures/simple
+
+fmt:
+    cargo fmt
+    git ls-files | xargs prettier -w --ignore-unknown

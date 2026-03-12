@@ -28,7 +28,7 @@ enum OutputFormat {
 }
 
 #[derive(Parser)]
-#[command(name = "mutr")]
+#[command(name = "mutr", version)]
 #[command(about = "Mutation testing for Solidity projects", long_about = None)]
 struct Cli {
     #[command(subcommand)]

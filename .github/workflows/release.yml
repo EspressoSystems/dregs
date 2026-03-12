@@ -4,6 +4,11 @@ on:
   push:
     tags: ["v*"]
   pull_request:
+    paths:
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - "src/**"
+      - ".github/workflows/release.yml"
   workflow_dispatch:
 
 jobs:
@@ -11,36 +16,19 @@ jobs:
     strategy:
       matrix:
         include:
-          - target: x86_64-unknown-linux-gnu
-            os: ubuntu-latest
+          - os: ubuntu-latest
             artifact: mutr-linux-amd64
-            use_cross: false
-          - target: aarch64-unknown-linux-gnu
-            os: ubuntu-latest
+          - os: ubuntu-24.04-arm
             artifact: mutr-linux-aarch64
-            use_cross: true
-          - target: aarch64-apple-darwin
-            os: macos-latest
+          - os: macos-latest
             artifact: mutr-macos-aarch64
-            use_cross: false
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: ${{ matrix.target }}
       - uses: Swatinem/rust-cache@v2
-      - name: Install cross
-        if: matrix.use_cross
-        uses: taiki-e/install-action@cross
-      - name: Build with cross
-        if: matrix.use_cross
-        run: cross build --release --target ${{ matrix.target }}
-      - name: Build with cargo
-        if: "!matrix.use_cross"
-        run: cargo build --release --target ${{ matrix.target }}
-      - name: Rename binary
-        run: cp target/${{ matrix.target }}/release/mutr ${{ matrix.artifact }}
+      - run: cargo build --release
+      - run: cp target/release/mutr ${{ matrix.artifact }}
       - uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.artifact }}

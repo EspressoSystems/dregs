@@ -9,17 +9,12 @@ on:
 jobs:
   generate:
     runs-on: ubuntu-latest
-    env:
-      FOUNDRY_SOLC: /usr/local/bin/solc
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
       - uses: foundry-rs/foundry-toolchain@v1
-      - name: Install solc
-        run: |
-          curl -L -o /usr/local/bin/solc https://github.com/ethereum/solidity/releases/download/v0.8.30/solc-static-linux
-          chmod +x /usr/local/bin/solc
+      - uses: ./.github/actions/install-solc
       - run: cargo build --release
       - run: ./target/release/mutr generate --project tests/fixtures/simple --output ./mutants
       - uses: actions/upload-artifact@v4
@@ -37,15 +32,10 @@ jobs:
     strategy:
       matrix:
         shard: [1, 2, 3, 4]
-    env:
-      FOUNDRY_SOLC: /usr/local/bin/solc
     steps:
       - uses: actions/checkout@v4
       - uses: foundry-rs/foundry-toolchain@v1
-      - name: Install solc
-        run: |
-          curl -L -o /usr/local/bin/solc https://github.com/ethereum/solidity/releases/download/v0.8.30/solc-static-linux
-          chmod +x /usr/local/bin/solc
+      - uses: ./.github/actions/install-solc
       - uses: actions/download-artifact@v4
         with:
           name: mutants

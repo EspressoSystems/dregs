@@ -1,0 +1,17 @@
+name: Install solc
+description: Install solc binary
+
+inputs:
+  version:
+    description: Solc version
+    default: "0.8.30"
+
+runs:
+  using: composite
+  steps:
+    - run: |
+        curl -fL -o /usr/local/bin/solc https://github.com/ethereum/solidity/releases/download/v${{ inputs.version }}/solc-static-linux
+        chmod +x /usr/local/bin/solc
+        echo "FOUNDRY_SOLC=/usr/local/bin/solc" >> "$GITHUB_ENV"
+        solc --version
+      shell: bash

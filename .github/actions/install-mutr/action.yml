@@ -1,0 +1,23 @@
+name: Install mutr
+description: Download mutr binary from GitHub releases (Linux amd64 only)
+
+inputs:
+  version:
+    description: mutr version (without v prefix)
+    default: "latest"
+
+runs:
+  using: composite
+  steps:
+    - name: Download mutr
+      run: |
+        if [ "${{ inputs.version }}" = "latest" ]; then
+          URL=$(curl -fSL https://api.github.com/repos/EspressoSystems/mutr/releases/latest \
+            | jq -r '.assets[] | select(.name == "mutr-linux-amd64") | .browser_download_url')
+        else
+          URL="https://github.com/EspressoSystems/mutr/releases/download/v${{ inputs.version }}/mutr-linux-amd64"
+        fi
+        curl -fL -o /usr/local/bin/mutr "$URL"
+        chmod +x /usr/local/bin/mutr
+        mutr --version
+      shell: bash

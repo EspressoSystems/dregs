@@ -1,0 +1,93 @@
+name: "Example: Mutation Test (Sharded)"
+
+on:
+  workflow_dispatch:
+
+env:
+  SOLC_VERSION: "0.8.30"
+
+jobs:
+  generate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: foundry-rs/foundry-toolchain@v1
+      - name: Install solc
+        run: |
+          curl -fL -o /usr/local/bin/solc https://github.com/ethereum/solidity/releases/download/v${SOLC_VERSION}/solc-static-linux
+          chmod +x /usr/local/bin/solc
+          echo "FOUNDRY_SOLC=/usr/local/bin/solc" >> "$GITHUB_ENV"
+          solc --version
+      - name: Install mutr
+        run: |
+          URL=$(curl -fSL https://api.github.com/repos/EspressoSystems/mutr/releases/latest \
+            | jq -r '.assets[] | select(.name == "mutr-linux-amd64") | .browser_download_url')
+          curl -fL -o /usr/local/bin/mutr "$URL"
+          chmod +x /usr/local/bin/mutr
+          mutr --version
+      - run: mutr generate --project . --output ./mutants
+      - uses: actions/upload-artifact@v4
+        with:
+          name: mutants
+          path: mutants/
+
+  test-shard:
+    needs: generate
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        shard: [1, 2, 3, 4]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: foundry-rs/foundry-toolchain@v1
+      - name: Install solc
+        run: |
+          curl -fL -o /usr/local/bin/solc https://github.com/ethereum/solidity/releases/download/v${SOLC_VERSION}/solc-static-linux
+          chmod +x /usr/local/bin/solc
+          echo "FOUNDRY_SOLC=/usr/local/bin/solc" >> "$GITHUB_ENV"
+          solc --version
+      - name: Install mutr
+        run: |
+          URL=$(curl -fSL https://api.github.com/repos/EspressoSystems/mutr/releases/latest \
+            | jq -r '.assets[] | select(.name == "mutr-linux-amd64") | .browser_download_url')
+          curl -fL -o /usr/local/bin/mutr "$URL"
+          chmod +x /usr/local/bin/mutr
+          mutr --version
+      - uses: actions/download-artifact@v4
+        with:
+          name: mutants
+          path: mutants
+      - run: >-
+          mutr test
+          --manifest ./mutants/manifest.json
+          --project .
+          --partition slice:${{ matrix.shard }}/4
+          --output results-${{ matrix.shard }}.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: results-${{ matrix.shard }}
+          path: results-${{ matrix.shard }}.json
+
+  report:
+    needs: test-shard
+    runs-on: ubuntu-latest
+    steps:
+      - name: Install mutr
+        run: |
+          URL=$(curl -fSL https://api.github.com/repos/EspressoSystems/mutr/releases/latest \
+            | jq -r '.assets[] | select(.name == "mutr-linux-amd64") | .browser_download_url')
+          curl -fL -o /usr/local/bin/mutr "$URL"
+          chmod +x /usr/local/bin/mutr
+          mutr --version
+      - uses: actions/download-artifact@v4
+        with:
+          name: mutants
+          path: mutants
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: results-*
+          merge-multiple: true
+      - run: >-
+          mutr report ./mutants/manifest.json results-*.json
+          --format markdown
+          | tee "$GITHUB_STEP_SUMMARY"

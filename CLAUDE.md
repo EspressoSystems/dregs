@@ -44,6 +44,8 @@ A Rust CLI tool that runs mutation testing for Solidity projects using Foundry. 
 - [x] `report` subcommand: merge partial result files, print summary, `--fail-under` threshold
 - [x] Manifest format: JSON manifest + mutant files with relative paths
 - [x] Partition: round-robin assignment by mutant ID
+- [x] GitHub Actions CI/CD (lint, test, coverage, mutation test, release)
+- [x] `report --format markdown` for CI step summaries
 
 ### v0.5 - Incremental Testing
 
@@ -60,6 +62,17 @@ A Rust CLI tool that runs mutation testing for Solidity projects using Foundry. 
 Use direnv with nix-direnv to automatically load the dev environment.
 
 Use the rust-dev agent for Rust implementation tasks.
+
+### Common Commands
+
+- `just fmt` - Format all code (cargo fmt + prettier on tracked files)
+- `just check` - Format, compile check, and lint
+- `just test` - Run tests with nextest
+- `just cov` - Run coverage
+- `just cov-check` - Check coverage meets 100% threshold
+- `just cov-html` - Open HTML coverage report
+- `just example` - Run mutr on the simple fixture
+- `just clean` - Remove generated output
 
 ### Commits
 
@@ -107,7 +120,17 @@ mutr
 │   ├── manifest.rs       # Manifest read/write for CI sharding
 │   ├── partition.rs      # Round-robin partition for CI sharding
 │   ├── runner.rs         # Test runner (forge test)
-│   └── report.rs         # Results reporting, merge partial results
+│   └── report.rs         # Results reporting, merge partial results, --format markdown
+├── .github/
+│   ├── actions/
+│   │   ├── install-solc/ # Composite action: install solc binary
+│   │   └── install-mutr/ # Composite action: install mutr from releases
+│   └── workflows/
+│       ├── lint.yml      # fmt, clippy, typos, prettier
+│       ├── test.yml      # nextest, coverage
+│       ├── mutation-test.yml  # Sharded mutation testing (self-test)
+│       ├── release.yml   # Native multi-arch builds + GitHub release
+│       └── example-mutation-test.yml  # Example sharded workflow for users
 ├── Cargo.toml
 ├── justfile              # Common dev commands
 └── CLAUDE.md             # Roadmap
