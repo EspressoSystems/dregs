@@ -62,6 +62,17 @@ Surviving mutants:
 dregs run --project . --workers 4
 ```
 
+### Diff-based filtering
+
+Only mutate lines changed since a git ref (useful for PR CI):
+
+```bash
+dregs run --project . --diff-base main
+dregs run --project . --diff-base HEAD~1
+```
+
+Uses merge-base semantics (`git diff main...HEAD`), so on a PR branch this covers exactly the changes introduced by the branch.
+
 ### Sharding (generate once, test in parallel jobs)
 
 Generate a manifest:

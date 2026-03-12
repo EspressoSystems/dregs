@@ -573,6 +573,143 @@ fn test_generate_test_with_partition() {
         .stdout(predicate::str::contains("Mutation score"));
 }
 
+// --- Diff-based filtering tests ---
+
+#[test]
+fn test_diff_base_generate_test_report_pipeline() {
+    let test_run = common::TestRun::from_fixture("simple");
+    let project = test_run.project_path();
+
+    // Set up git history: initial commit, then modify one line
+    common::init_git_repo(&project);
+    common::git_add_commit(&project, "initial");
+
+    // Add a comment on the increment line (changes line but doesn't break tests)
+    let counter_path = project.join("src/Counter.sol");
+    let content = std::fs::read_to_string(&counter_path).unwrap();
+    let modified = content.replace("number = number + 1;", "number = number + 1; // updated");
+    std::fs::write(&counter_path, modified).unwrap();
+    common::git_add_commit(&project, "add comment to increment");
+
+    let mutants_dir = project.join("mutants_out");
+    let results1_path = project.join("results1.json");
+    let results2_path = project.join("results2.json");
+
+    // Generate with --diff-base
+    dregs_cmd()
+        .arg("generate")
+        .arg("--project")
+        .arg(&project)
+        .arg("--diff-base")
+        .arg("HEAD~1")
+        .arg("--output")
+        .arg(&mutants_dir)
+        .assert()
+        .success()
+        .stderr(predicate::str::contains("Diff filter"));
+
+    let manifest_path = mutants_dir.join("manifest.json");
+    assert!(manifest_path.exists());
+
+    // Read manifest to verify mutants are only on changed line
+    let manifest_content = std::fs::read_to_string(&manifest_path).unwrap();
+    let manifest: serde_json::Value = serde_json::from_str(&manifest_content).unwrap();
+    let mutants = manifest["mutants"].as_array().unwrap();
+    assert!(!mutants.is_empty(), "should have mutants on changed line");
+    for m in mutants {
+        assert_eq!(
+            m["line"].as_u64().unwrap(),
+            12,
+            "all mutants should be on line 12 (the changed line)"
+        );
+    }
+
+    // Test with partitions
+    dregs_cmd()
+        .arg("test")
+        .arg("--manifest")
+        .arg(&manifest_path)
+        .arg("--project")
+        .arg(&project)
+        .arg("--partition")
+        .arg("slice:1/2")
+        .arg("--output")
+        .arg(&results1_path)
+        .assert()
+        .success();
+
+    dregs_cmd()
+        .arg("test")
+        .arg("--manifest")
+        .arg(&manifest_path)
+        .arg("--project")
+        .arg(&project)
+        .arg("--partition")
+        .arg("slice:2/2")
+        .arg("--output")
+        .arg(&results2_path)
+        .assert()
+        .success();
+
+    // Report
+    dregs_cmd()
+        .arg("report")
+        .arg(&manifest_path)
+        .arg(&results1_path)
+        .arg(&results2_path)
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Mutation score"));
+}
+
+#[test]
+fn test_diff_base_no_changes() {
+    let test_run = common::TestRun::from_fixture("simple");
+    let project = test_run.project_path();
+
+    common::init_git_repo(&project);
+    common::git_add_commit(&project, "initial");
+
+    // No changes since HEAD -> should exit cleanly
+    dregs_cmd()
+        .arg("run")
+        .arg("--project")
+        .arg(&project)
+        .arg("--diff-base")
+        .arg("HEAD")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Mutation score: 100.0%"));
+}
+
+#[test]
+fn test_diff_base_run_simple() {
+    let test_run = common::TestRun::from_fixture("simple");
+    let project = test_run.project_path();
+
+    common::init_git_repo(&project);
+    common::git_add_commit(&project, "initial");
+
+    // Add comment to decrement line (changes line 17 without breaking tests,
+    // gambit will still mutate the `-` operator)
+    let counter_path = project.join("src/Counter.sol");
+    let content = std::fs::read_to_string(&counter_path).unwrap();
+    let modified = content.replace("number = number - 1;", "number = number - 1; // updated");
+    std::fs::write(&counter_path, modified).unwrap();
+    common::git_add_commit(&project, "add comment to decrement");
+
+    dregs_cmd()
+        .arg("run")
+        .arg("--project")
+        .arg(&project)
+        .arg("--diff-base")
+        .arg("HEAD~1")
+        .assert()
+        .success()
+        .stderr(predicate::str::contains("Diff filter"))
+        .stdout(predicate::str::contains("Mutation score"));
+}
+
 // --- Test subcommand errors ---
 
 #[test]

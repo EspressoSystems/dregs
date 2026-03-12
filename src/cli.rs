@@ -10,6 +10,7 @@ use crate::config::{
     DregsConfig, FoundryConfig, find_project_root, parse_dregs_toml, parse_foundry_toml,
     resolve_remappings,
 };
+use crate::diff::{DiffRange, filter_mutants, filter_targets_by_diff, parse_git_diff};
 use crate::generator::gambit::GambitGenerator;
 use crate::generator::{FileTarget, GeneratorConfig, Mutant, MutationGenerator};
 use crate::manifest::Manifest;
@@ -88,6 +89,13 @@ pub enum Commands {
         #[arg(short, long, default_value = "1", help = "Number of parallel workers", value_parser = parse_workers)]
         workers: usize,
 
+        #[arg(
+            long,
+            help = "Only mutate lines changed since this git ref (merge-base)",
+            value_name = "REF"
+        )]
+        diff_base: Option<String>,
+
         #[arg(last = true, help = "Extra arguments passed to forge test (after --)")]
         forge_args: Vec<String>,
     },
@@ -126,6 +134,13 @@ pub enum Commands {
             help = "Skip gambit's mutant validation (workaround for via_ir projects)"
         )]
         skip_validate: bool,
+
+        #[arg(
+            long,
+            help = "Only mutate lines changed since this git ref (merge-base)",
+            value_name = "REF"
+        )]
+        diff_base: Option<String>,
     },
 
     /// Test mutants from a manifest
@@ -190,6 +205,7 @@ pub fn run(cli: Cli) -> Result<()> {
             timeout: _timeout,
             skip_validate,
             workers,
+            diff_base,
             forge_args,
         } => {
             run_mutation_testing(
@@ -201,6 +217,7 @@ pub fn run(cli: Cli) -> Result<()> {
                 mutations,
                 skip_validate,
                 workers,
+                diff_base,
                 &forge_args,
             )?;
         }
@@ -212,8 +229,17 @@ pub fn run(cli: Cli) -> Result<()> {
             solc: _solc,
             mutations,
             skip_validate,
+            diff_base,
         } => {
-            cmd_generate(files, project, config, output, mutations, skip_validate)?;
+            cmd_generate(
+                files,
+                project,
+                config,
+                output,
+                mutations,
+                skip_validate,
+                diff_base,
+            )?;
         }
         Commands::Test {
             manifest,
@@ -321,6 +347,51 @@ fn paths_to_targets(files: Vec<PathBuf>, forge_args: &[String]) -> Vec<FileTarge
             forge_args: forge_args.to_vec(),
         })
         .collect()
+}
+
+fn apply_diff_target_filter(
+    targets: Vec<FileTarget>,
+    diff_base: Option<&str>,
+    project_root: &Path,
+) -> Result<(Vec<FileTarget>, Option<Vec<DiffRange>>)> {
+    let Some(base_ref) = diff_base else {
+        return Ok((targets, None));
+    };
+    let diff_ranges = parse_git_diff(project_root, base_ref).context("failed to parse git diff")?;
+    if diff_ranges.is_empty() {
+        eprintln!("No Solidity files changed since {base_ref}");
+        return Ok((vec![], Some(diff_ranges)));
+    }
+    let filtered = filter_targets_by_diff(targets, &diff_ranges, project_root);
+    if filtered.is_empty() {
+        eprintln!("No target files overlap with diff since {base_ref}");
+    } else {
+        eprintln!(
+            "Diff filter: {} target files overlap with changes",
+            filtered.len()
+        );
+    }
+    Ok((filtered, Some(diff_ranges)))
+}
+
+fn apply_diff_mutant_filter(
+    mutants: Vec<Mutant>,
+    diff_ranges: Option<&[DiffRange]>,
+) -> Vec<Mutant> {
+    let Some(diff_ranges) = diff_ranges else {
+        return mutants;
+    };
+    let before = mutants.len();
+    let filtered = filter_mutants(mutants, diff_ranges);
+    if filtered.is_empty() {
+        eprintln!("No mutants on changed lines (filtered {before} mutants)");
+    } else {
+        eprintln!(
+            "Diff filter: {}/{before} mutants on changed lines",
+            filtered.len()
+        );
+    }
+    filtered
 }
 
 fn generate_mutants(
@@ -446,6 +517,7 @@ fn run_mutation_testing(
     mutations: Vec<String>,
     skip_validate: bool,
     workers: usize,
+    diff_base: Option<String>,
     forge_args: &[String],
 ) -> Result<()> {
     let project_root = resolve_project_root(&files, &project)?;
@@ -471,6 +543,13 @@ fn run_mutation_testing(
     run_baseline_tests(&project_root, baseline_forge_args)?;
 
     let targets = resolve_targets(dregs_config, files, forge_args, &project_root)?;
+    let (targets, diff_ranges) =
+        apply_diff_target_filter(targets, diff_base.as_deref(), &project_root)?;
+    if targets.is_empty() {
+        println!("Mutation score: 100.0% (0 mutants)");
+        return Ok(());
+    }
+
     let mutants = generate_mutants(
         &project_root,
         targets,
@@ -478,9 +557,13 @@ fn run_mutation_testing(
         foundry_config,
         skip_validate,
     )?;
-
+    let mutants = apply_diff_mutant_filter(mutants, diff_ranges.as_deref());
     if mutants.is_empty() {
-        println!("No mutants generated");
+        if diff_ranges.is_some() {
+            println!("Mutation score: 100.0% (0 mutants)");
+        } else {
+            println!("No mutants generated");
+        }
         return Ok(());
     }
 
@@ -519,6 +602,7 @@ fn cmd_generate(
     output: PathBuf,
     mutations: Vec<String>,
     skip_validate: bool,
+    diff_base: Option<String>,
 ) -> Result<()> {
     let project_root = resolve_project_root(&files, &project)?;
     let foundry_config =
@@ -533,6 +617,12 @@ fn cmd_generate(
     let dregs_config =
         parse_dregs_toml(&project_root, config.as_deref()).context("failed to parse dregs.toml")?;
     let targets = resolve_targets(dregs_config, files, &[], &project_root)?;
+    let (targets, diff_ranges) =
+        apply_diff_target_filter(targets, diff_base.as_deref(), &project_root)?;
+    if targets.is_empty() {
+        println!("No mutants generated");
+        return Ok(());
+    }
 
     let mutants = generate_mutants(
         &project_root,
@@ -541,7 +631,7 @@ fn cmd_generate(
         foundry_config,
         skip_validate,
     )?;
-
+    let mutants = apply_diff_mutant_filter(mutants, diff_ranges.as_deref());
     if mutants.is_empty() {
         println!("No mutants generated");
         return Ok(());
@@ -722,6 +812,7 @@ fn discover_solidity_files(project_root: &std::path::Path) -> Result<Vec<PathBuf
 }
 
 #[cfg(test)]
+#[allow(clippy::single_range_in_vec_init)]
 mod tests {
     use super::*;
 
@@ -996,6 +1087,28 @@ mod tests {
     }
 
     #[test]
+    fn test_cli_accepts_diff_base() {
+        use clap::Parser;
+        let cli = Cli::parse_from(["dregs", "run", "--diff-base", "main"]);
+        match cli.command {
+            Commands::Run { diff_base, .. } => assert_eq!(diff_base, Some("main".to_string())),
+            _ => panic!("expected Run command"),
+        }
+    }
+
+    #[test]
+    fn test_cli_generate_accepts_diff_base() {
+        use clap::Parser;
+        let cli = Cli::parse_from(["dregs", "generate", "--diff-base", "HEAD~1"]);
+        match cli.command {
+            Commands::Generate { diff_base, .. } => {
+                assert_eq!(diff_base, Some("HEAD~1".to_string()))
+            }
+            _ => panic!("expected Generate command"),
+        }
+    }
+
+    #[test]
     fn test_resolve_targets_no_config_with_files() {
         use assert_fs::prelude::*;
 
@@ -1012,5 +1125,176 @@ mod tests {
         .unwrap();
         assert_eq!(targets.len(), 1);
         assert_eq!(targets[0].forge_args, vec!["--match-test", "foo"]);
+    }
+
+    #[test]
+    fn test_apply_diff_target_filter_none() {
+        let targets = vec![FileTarget {
+            file: PathBuf::from("src/A.sol"),
+            contracts: vec![],
+            functions: vec![],
+            forge_args: vec![],
+        }];
+        let temp = assert_fs::TempDir::new().unwrap();
+        let (filtered, ranges) =
+            apply_diff_target_filter(targets.clone(), None, temp.path()).unwrap();
+        assert_eq!(filtered.len(), 1);
+        assert!(ranges.is_none());
+    }
+
+    use crate::test_utils::{git_add_commit, init_git_repo};
+
+    #[test]
+    fn test_apply_diff_target_filter_with_diff() {
+        use assert_fs::prelude::*;
+
+        let temp = assert_fs::TempDir::new().unwrap();
+        init_git_repo(temp.path());
+        temp.child("src/A.sol").write_str("line1\n").unwrap();
+        temp.child("src/B.sol").write_str("line1\n").unwrap();
+        git_add_commit(temp.path(), "initial");
+
+        temp.child("src/A.sol").write_str("changed\n").unwrap();
+        git_add_commit(temp.path(), "modify A");
+
+        let targets = vec![
+            FileTarget {
+                file: temp.path().join("src/A.sol"),
+                contracts: vec![],
+                functions: vec![],
+                forge_args: vec![],
+            },
+            FileTarget {
+                file: temp.path().join("src/B.sol"),
+                contracts: vec![],
+                functions: vec![],
+                forge_args: vec![],
+            },
+        ];
+        let diff_base = Some("HEAD~1".to_string());
+        let (filtered, ranges) =
+            apply_diff_target_filter(targets, diff_base.as_deref(), temp.path()).unwrap();
+        assert_eq!(filtered.len(), 1);
+        assert!(ranges.is_some());
+        assert!(filtered[0].file.to_string_lossy().contains("src/A.sol"));
+    }
+
+    #[test]
+    fn test_apply_diff_target_filter_empty_diff() {
+        let temp = assert_fs::TempDir::new().unwrap();
+        init_git_repo(temp.path());
+        std::fs::write(temp.path().join("a.sol"), "x\n").unwrap();
+        git_add_commit(temp.path(), "initial");
+
+        let targets = vec![FileTarget {
+            file: PathBuf::from("src/A.sol"),
+            contracts: vec![],
+            functions: vec![],
+            forge_args: vec![],
+        }];
+        let diff_base = Some("HEAD".to_string());
+        let (filtered, ranges) =
+            apply_diff_target_filter(targets, diff_base.as_deref(), temp.path()).unwrap();
+        assert!(filtered.is_empty());
+        assert!(ranges.is_some());
+    }
+
+    #[test]
+    fn test_apply_diff_target_filter_no_overlap() {
+        use assert_fs::prelude::*;
+
+        let temp = assert_fs::TempDir::new().unwrap();
+        init_git_repo(temp.path());
+        temp.child("src/A.sol").write_str("line1\n").unwrap();
+        git_add_commit(temp.path(), "initial");
+
+        temp.child("src/A.sol").write_str("changed\n").unwrap();
+        git_add_commit(temp.path(), "modify A");
+
+        // Target is B.sol but only A.sol changed
+        let targets = vec![FileTarget {
+            file: temp.path().join("src/B.sol"),
+            contracts: vec![],
+            functions: vec![],
+            forge_args: vec![],
+        }];
+        let diff_base = Some("HEAD~1".to_string());
+        let (filtered, ranges) =
+            apply_diff_target_filter(targets, diff_base.as_deref(), temp.path()).unwrap();
+        assert!(filtered.is_empty());
+        assert!(ranges.is_some());
+    }
+
+    #[test]
+    fn test_apply_diff_mutant_filter_none() {
+        let mutants = vec![Mutant {
+            id: 1,
+            source_path: PathBuf::from("src/A.sol"),
+            relative_source_path: PathBuf::from("src/A.sol"),
+            mutant_path: PathBuf::from("out/1.sol"),
+            operator: "op".to_string(),
+            original: "a".to_string(),
+            replacement: "b".to_string(),
+            line: 10,
+            forge_args: vec![],
+        }];
+        let result = apply_diff_mutant_filter(mutants, None);
+        assert_eq!(result.len(), 1);
+    }
+
+    #[test]
+    fn test_apply_diff_mutant_filter_with_ranges() {
+        let mutants = vec![
+            Mutant {
+                id: 1,
+                source_path: PathBuf::from("src/A.sol"),
+                relative_source_path: PathBuf::from("src/A.sol"),
+                mutant_path: PathBuf::from("out/1.sol"),
+                operator: "op".to_string(),
+                original: "a".to_string(),
+                replacement: "b".to_string(),
+                line: 10,
+                forge_args: vec![],
+            },
+            Mutant {
+                id: 2,
+                source_path: PathBuf::from("src/A.sol"),
+                relative_source_path: PathBuf::from("src/A.sol"),
+                mutant_path: PathBuf::from("out/2.sol"),
+                operator: "op".to_string(),
+                original: "a".to_string(),
+                replacement: "b".to_string(),
+                line: 50,
+                forge_args: vec![],
+            },
+        ];
+        let ranges = Some(vec![DiffRange {
+            file: PathBuf::from("src/A.sol"),
+            lines: vec![8..15],
+        }]);
+        let result = apply_diff_mutant_filter(mutants, ranges.as_deref());
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0].id, 1);
+    }
+
+    #[test]
+    fn test_apply_diff_mutant_filter_all_filtered() {
+        let mutants = vec![Mutant {
+            id: 1,
+            source_path: PathBuf::from("src/A.sol"),
+            relative_source_path: PathBuf::from("src/A.sol"),
+            mutant_path: PathBuf::from("out/1.sol"),
+            operator: "op".to_string(),
+            original: "a".to_string(),
+            replacement: "b".to_string(),
+            line: 50,
+            forge_args: vec![],
+        }];
+        let ranges = Some(vec![DiffRange {
+            file: PathBuf::from("src/A.sol"),
+            lines: vec![1..5],
+        }]);
+        let result = apply_diff_mutant_filter(mutants, ranges.as_deref());
+        assert!(result.is_empty());
     }
 }
