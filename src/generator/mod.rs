@@ -25,12 +25,22 @@ pub struct Mutant {
     pub original: String,
     pub replacement: String,
     pub line: u32,
+    #[serde(default)]
+    pub forge_args: Vec<String>,
+}
+
+#[derive(Debug, Clone)]
+pub struct FileTarget {
+    pub file: PathBuf,
+    pub contracts: Vec<String>,
+    pub functions: Vec<String>,
+    pub forge_args: Vec<String>,
 }
 
 #[derive(Debug, Clone)]
 pub struct GeneratorConfig {
     pub project_root: PathBuf,
-    pub files: Vec<PathBuf>,
+    pub targets: Vec<FileTarget>,
     pub operators: Vec<String>,
     pub output_dir: PathBuf,
     pub foundry_config: Option<FoundryConfig>,
@@ -56,6 +66,7 @@ mod tests {
             original: "+".to_string(),
             replacement: "-".to_string(),
             line: 12,
+            forge_args: vec![],
         };
         assert_eq!(mutant.id, 1);
         assert_eq!(mutant.operator, "binary-op-mutation");
@@ -66,13 +77,18 @@ mod tests {
     fn test_generator_config_creation() {
         let config = GeneratorConfig {
             project_root: PathBuf::from("."),
-            files: vec![PathBuf::from("src/Counter.sol")],
+            targets: vec![FileTarget {
+                file: PathBuf::from("src/Counter.sol"),
+                contracts: vec![],
+                functions: vec![],
+                forge_args: vec![],
+            }],
             operators: vec!["binary-op-mutation".to_string()],
             output_dir: PathBuf::from("gambit_out"),
             foundry_config: None,
             skip_validate: false,
         };
-        assert_eq!(config.files.len(), 1);
+        assert_eq!(config.targets.len(), 1);
         assert_eq!(config.operators.len(), 1);
     }
 

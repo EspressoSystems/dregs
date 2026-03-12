@@ -11,6 +11,8 @@ pub enum ConfigError {
     ReadError(#[from] std::io::Error),
     #[error("failed to parse foundry.toml: {0}")]
     ParseError(#[from] toml::de::Error),
+    #[error("invalid mutr.toml: {0}")]
+    MutrConfigError(String),
 }
 
 pub type Result<T> = std::result::Result<T, ConfigError>;
@@ -79,6 +81,59 @@ pub fn resolve_remappings(project_root: &Path) -> Vec<String> {
             Vec::new()
         }
     }
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct MutrConfig {
+    #[serde(rename = "target")]
+    pub targets: Vec<TargetConfig>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct TargetConfig {
+    pub files: Vec<String>,
+    pub contracts: Option<Vec<String>>,
+    pub functions: Option<Vec<String>>,
+    pub forge_args: Option<Vec<String>>,
+}
+
+pub fn parse_mutr_toml(
+    project_root: &Path,
+    config_path: Option<&Path>,
+) -> Result<Option<MutrConfig>> {
+    let toml_path = config_path
+        .map(|p| p.to_path_buf())
+        .unwrap_or_else(|| project_root.join("mutr.toml"));
+    if !toml_path.exists() {
+        if config_path.is_some() {
+            return Err(ConfigError::MutrConfigError(format!(
+                "config file not found: {}",
+                toml_path.display()
+            )));
+        }
+        return Ok(None);
+    }
+
+    let content = fs::read_to_string(&toml_path)?;
+    let config: MutrConfig =
+        toml::from_str(&content).map_err(|e| ConfigError::MutrConfigError(e.to_string()))?;
+
+    if config.targets.is_empty() {
+        return Err(ConfigError::MutrConfigError(
+            "no targets defined".to_string(),
+        ));
+    }
+
+    for (i, t) in config.targets.iter().enumerate() {
+        if t.files.is_empty() {
+            return Err(ConfigError::MutrConfigError(format!(
+                "target {} has no files",
+                i + 1
+            )));
+        }
+    }
+
+    Ok(Some(config))
 }
 
 pub fn find_project_root(file: &Path) -> Option<std::path::PathBuf> {
@@ -243,5 +298,138 @@ optimizer = true
             .unwrap();
         let result = parse_foundry_toml(temp.path());
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_parse_mutr_toml_not_found() {
+        let temp = TempDir::new().unwrap();
+        let result = parse_mutr_toml(temp.path(), None).unwrap();
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn test_parse_mutr_toml_ok() {
+        let temp = TempDir::new().unwrap();
+        temp.child("mutr.toml")
+            .write_str(
+                r#"
+[[target]]
+files = ["src/A.sol"]
+contracts = ["A"]
+functions = ["transfer"]
+forge_args = ["--match-contract", "ATest"]
+
+[[target]]
+files = ["src/B.sol", "src/C.sol"]
+"#,
+            )
+            .unwrap();
+
+        let config = parse_mutr_toml(temp.path(), None).unwrap().unwrap();
+        assert_eq!(config.targets.len(), 2);
+
+        let t0 = &config.targets[0];
+        assert_eq!(t0.files, vec!["src/A.sol"]);
+        assert_eq!(t0.contracts, Some(vec!["A".to_string()]));
+        assert_eq!(t0.functions, Some(vec!["transfer".to_string()]));
+        assert_eq!(
+            t0.forge_args,
+            Some(vec!["--match-contract".to_string(), "ATest".to_string()])
+        );
+
+        let t1 = &config.targets[1];
+        assert_eq!(t1.files, vec!["src/B.sol", "src/C.sol"]);
+        assert!(t1.contracts.is_none());
+        assert!(t1.functions.is_none());
+        assert!(t1.forge_args.is_none());
+    }
+
+    #[test]
+    fn test_parse_mutr_toml_invalid_toml() {
+        let temp = TempDir::new().unwrap();
+        temp.child("mutr.toml")
+            .write_str("not valid { toml }")
+            .unwrap();
+        let result = parse_mutr_toml(temp.path(), None);
+        assert!(result.is_err());
+        assert!(
+            result
+                .unwrap_err()
+                .to_string()
+                .contains("invalid mutr.toml"),
+            "error should mention invalid mutr.toml"
+        );
+    }
+
+    #[test]
+    fn test_parse_mutr_toml_empty_targets() {
+        let temp = TempDir::new().unwrap();
+        temp.child("mutr.toml").write_str("target = []\n").unwrap();
+        let result = parse_mutr_toml(temp.path(), None);
+        assert!(result.is_err());
+        assert!(
+            result
+                .unwrap_err()
+                .to_string()
+                .contains("no targets defined"),
+            "error should mention no targets defined"
+        );
+    }
+
+    #[test]
+    fn test_parse_mutr_toml_minimal_target() {
+        let temp = TempDir::new().unwrap();
+        temp.child("mutr.toml")
+            .write_str(
+                r#"
+[[target]]
+files = ["src/**/*.sol"]
+"#,
+            )
+            .unwrap();
+
+        let config = parse_mutr_toml(temp.path(), None).unwrap().unwrap();
+        assert_eq!(config.targets.len(), 1);
+        assert_eq!(config.targets[0].files, vec!["src/**/*.sol"]);
+        assert!(config.targets[0].contracts.is_none());
+        assert!(config.targets[0].functions.is_none());
+        assert!(config.targets[0].forge_args.is_none());
+    }
+
+    #[test]
+    fn test_parse_mutr_toml_explicit_path() {
+        let temp = TempDir::new().unwrap();
+        let custom = temp.path().join("custom.toml");
+        std::fs::write(&custom, "[[target]]\nfiles = [\"src/A.sol\"]\n").unwrap();
+
+        let config = parse_mutr_toml(temp.path(), Some(&custom))
+            .unwrap()
+            .unwrap();
+        assert_eq!(config.targets.len(), 1);
+    }
+
+    #[test]
+    fn test_parse_mutr_toml_explicit_path_not_found() {
+        let temp = TempDir::new().unwrap();
+        let missing = temp.path().join("missing.toml");
+        let result = parse_mutr_toml(temp.path(), Some(&missing));
+        assert!(result.is_err());
+        assert!(
+            result
+                .unwrap_err()
+                .to_string()
+                .contains("config file not found")
+        );
+    }
+
+    #[test]
+    fn test_parse_mutr_toml_empty_files_in_target() {
+        let temp = TempDir::new().unwrap();
+        temp.child("mutr.toml")
+            .write_str("[[target]]\nfiles = []\n")
+            .unwrap();
+        let result = parse_mutr_toml(temp.path(), None);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("has no files"));
     }
 }

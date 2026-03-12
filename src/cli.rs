@@ -6,9 +6,12 @@ use std::process;
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::time::Instant;
 
-use crate::config::{FoundryConfig, find_project_root, parse_foundry_toml, resolve_remappings};
+use crate::config::{
+    FoundryConfig, MutrConfig, find_project_root, parse_foundry_toml, parse_mutr_toml,
+    resolve_remappings,
+};
 use crate::generator::gambit::GambitGenerator;
-use crate::generator::{GeneratorConfig, Mutant, MutationGenerator};
+use crate::generator::{FileTarget, GeneratorConfig, Mutant, MutationGenerator};
 use crate::manifest::Manifest;
 use crate::partition::Partition;
 use crate::report::Report;
@@ -45,6 +48,9 @@ pub enum Commands {
 
         #[arg(short, long, default_value = ".", help = "Project root")]
         project: PathBuf,
+
+        #[arg(long, help = "Path to mutr.toml config file")]
+        config: Option<PathBuf>,
 
         #[arg(short, long, help = "Output report path (JSON)")]
         output: Option<PathBuf>,
@@ -93,6 +99,9 @@ pub enum Commands {
 
         #[arg(short, long, default_value = ".", help = "Project root")]
         project: PathBuf,
+
+        #[arg(long, help = "Path to mutr.toml config file")]
+        config: Option<PathBuf>,
 
         #[arg(
             short,
@@ -173,6 +182,7 @@ pub fn run(cli: Cli) -> Result<()> {
         Commands::Run {
             files,
             project,
+            config,
             output,
             fail_under,
             solc: _solc,
@@ -185,6 +195,7 @@ pub fn run(cli: Cli) -> Result<()> {
             run_mutation_testing(
                 files,
                 project,
+                config,
                 output,
                 fail_under,
                 mutations,
@@ -196,12 +207,13 @@ pub fn run(cli: Cli) -> Result<()> {
         Commands::Generate {
             files,
             project,
+            config,
             output,
             solc: _solc,
             mutations,
             skip_validate,
         } => {
-            cmd_generate(files, project, output, mutations, skip_validate)?;
+            cmd_generate(files, project, config, output, mutations, skip_validate)?;
         }
         Commands::Test {
             manifest,
@@ -227,50 +239,93 @@ pub fn run(cli: Cli) -> Result<()> {
     Ok(())
 }
 
-fn resolve_files_and_config(
-    files: Vec<PathBuf>,
-    project: PathBuf,
-) -> Result<(PathBuf, Vec<PathBuf>, Option<FoundryConfig>)> {
-    let project_root = resolve_project_root(&files, &project)?;
-
-    let target_files = if files.is_empty() {
-        discover_solidity_files(&project_root)?
-    } else {
-        files
-            .into_iter()
-            .map(|f| {
-                if f.is_absolute() {
-                    Ok(f)
-                } else {
-                    project_root
-                        .join(&f)
-                        .canonicalize()
-                        .with_context(|| format!("failed to resolve file path: {}", f.display()))
-                }
-            })
-            .collect::<Result<Vec<_>>>()?
-    };
-
-    if target_files.is_empty() {
-        anyhow::bail!("no Solidity files found to mutate");
-    }
-
-    let foundry_config =
-        parse_foundry_toml(&project_root).context("failed to parse foundry.toml")?;
-
-    let foundry_config = foundry_config.map(|mut fc| {
-        if fc.remappings.is_empty() {
-            fc.remappings = resolve_remappings(&project_root);
+fn resolve_targets(
+    mutr_config: Option<MutrConfig>,
+    cli_files: Vec<PathBuf>,
+    forge_args: &[String],
+    project_root: &Path,
+) -> Result<Vec<FileTarget>> {
+    if let Some(config) = mutr_config {
+        if !cli_files.is_empty() || !forge_args.is_empty() {
+            anyhow::bail!(
+                "mutr.toml defines targets; do not pass files or -- forge_args on the command line"
+            );
         }
-        fc
-    });
+        let mut targets = Vec::new();
+        for tc in config.targets {
+            let resolved_files = resolve_glob_patterns(&tc.files, project_root)?;
+            for file in resolved_files {
+                targets.push(FileTarget {
+                    file,
+                    contracts: tc.contracts.clone().unwrap_or_default(),
+                    functions: tc.functions.clone().unwrap_or_default(),
+                    forge_args: tc.forge_args.clone().unwrap_or_default(),
+                });
+            }
+        }
+        if targets.is_empty() {
+            anyhow::bail!("mutr.toml targets matched no files");
+        }
+        Ok(targets)
+    } else {
+        let target_files = if cli_files.is_empty() {
+            discover_solidity_files(project_root)?
+        } else {
+            cli_files
+                .into_iter()
+                .map(|f| {
+                    if f.is_absolute() {
+                        Ok(f)
+                    } else {
+                        project_root.join(&f).canonicalize().with_context(|| {
+                            format!("failed to resolve file path: {}", f.display())
+                        })
+                    }
+                })
+                .collect::<Result<Vec<_>>>()?
+        };
+        if target_files.is_empty() {
+            anyhow::bail!("no Solidity files found to mutate");
+        }
+        Ok(paths_to_targets(target_files, forge_args))
+    }
+}
 
-    Ok((project_root, target_files, foundry_config))
+fn resolve_glob_patterns(patterns: &[String], project_root: &Path) -> Result<Vec<PathBuf>> {
+    let mut files = Vec::new();
+    for pattern in patterns {
+        let full_pattern = project_root.join(pattern);
+        let pattern_str = full_pattern
+            .to_str()
+            .context("invalid path for glob pattern")?;
+        let mut matched = false;
+        for entry in glob::glob(pattern_str).context("failed to read glob pattern")? {
+            let path = entry.context("failed to read glob entry")?;
+            files.push(path);
+            matched = true;
+        }
+        if !matched {
+            anyhow::bail!("no files matched pattern: {}", pattern);
+        }
+    }
+    Ok(files)
+}
+
+fn paths_to_targets(files: Vec<PathBuf>, forge_args: &[String]) -> Vec<FileTarget> {
+    files
+        .into_iter()
+        .map(|file| FileTarget {
+            file,
+            contracts: vec![],
+            functions: vec![],
+            forge_args: forge_args.to_vec(),
+        })
+        .collect()
 }
 
 fn generate_mutants(
     project_root: &Path,
-    target_files: Vec<PathBuf>,
+    targets: Vec<FileTarget>,
     mutations: Vec<String>,
     foundry_config: Option<FoundryConfig>,
     skip_validate: bool,
@@ -278,7 +333,7 @@ fn generate_mutants(
     let output_dir = project_root.join("gambit_out");
     let config = GeneratorConfig {
         project_root: project_root.to_path_buf(),
-        files: target_files,
+        targets,
         operators: mutations,
         output_dir,
         foundry_config,
@@ -297,7 +352,6 @@ fn generate_mutants(
 fn run_mutants_parallel(
     mutants: &[Mutant],
     project_root: &Path,
-    forge_args: &[String],
     workers: usize,
 ) -> Result<Vec<TestResult>> {
     let pool = rayon::ThreadPoolBuilder::new()
@@ -312,7 +366,7 @@ fn run_mutants_parallel(
         mutants
             .par_iter()
             .map(|mutant| {
-                let result = run_mutant(mutant, project_root, forge_args)
+                let result = run_mutant(mutant, project_root)
                     .with_context(|| format!("failed to run mutant {}", mutant.id))?;
                 let done = completed.fetch_add(1, Ordering::Relaxed) + 1;
                 let status = if result.killed {
@@ -386,6 +440,7 @@ fn run_baseline_tests(project_root: &Path, forge_args: &[String]) -> Result<()> 
 fn run_mutation_testing(
     files: Vec<PathBuf>,
     project: PathBuf,
+    config: Option<PathBuf>,
     output: Option<PathBuf>,
     fail_under: Option<f64>,
     mutations: Vec<String>,
@@ -393,13 +448,32 @@ fn run_mutation_testing(
     workers: usize,
     forge_args: &[String],
 ) -> Result<()> {
-    let (project_root, target_files, foundry_config) = resolve_files_and_config(files, project)?;
+    let project_root = resolve_project_root(&files, &project)?;
+    let foundry_config =
+        parse_foundry_toml(&project_root).context("failed to parse foundry.toml")?;
+    let foundry_config = foundry_config.map(|mut fc| {
+        if fc.remappings.is_empty() {
+            fc.remappings = resolve_remappings(&project_root);
+        }
+        fc
+    });
 
-    run_baseline_tests(&project_root, forge_args)?;
+    let mutr_config =
+        parse_mutr_toml(&project_root, config.as_deref()).context("failed to parse mutr.toml")?;
 
+    // When mutr.toml defines targets, each has its own forge_args, so baseline runs unfiltered.
+    // When using CLI forge_args, baseline validates that matching tests exist.
+    let baseline_forge_args: &[String] = if mutr_config.is_some() {
+        &[]
+    } else {
+        forge_args
+    };
+    run_baseline_tests(&project_root, baseline_forge_args)?;
+
+    let targets = resolve_targets(mutr_config, files, forge_args, &project_root)?;
     let mutants = generate_mutants(
         &project_root,
-        target_files,
+        targets,
         mutations,
         foundry_config,
         skip_validate,
@@ -412,7 +486,7 @@ fn run_mutation_testing(
 
     eprintln!("Generated {} mutants", mutants.len());
 
-    let results = run_mutants_parallel(&mutants, &project_root, forge_args, workers)?;
+    let results = run_mutants_parallel(&mutants, &project_root, workers)?;
 
     let report = Report::new(results);
     report.print_summary(&mutants);
@@ -441,15 +515,28 @@ fn run_mutation_testing(
 fn cmd_generate(
     files: Vec<PathBuf>,
     project: PathBuf,
+    config: Option<PathBuf>,
     output: PathBuf,
     mutations: Vec<String>,
     skip_validate: bool,
 ) -> Result<()> {
-    let (project_root, target_files, foundry_config) = resolve_files_and_config(files, project)?;
+    let project_root = resolve_project_root(&files, &project)?;
+    let foundry_config =
+        parse_foundry_toml(&project_root).context("failed to parse foundry.toml")?;
+    let foundry_config = foundry_config.map(|mut fc| {
+        if fc.remappings.is_empty() {
+            fc.remappings = resolve_remappings(&project_root);
+        }
+        fc
+    });
+
+    let mutr_config =
+        parse_mutr_toml(&project_root, config.as_deref()).context("failed to parse mutr.toml")?;
+    let targets = resolve_targets(mutr_config, files, &[], &project_root)?;
 
     let mutants = generate_mutants(
         &project_root,
-        target_files,
+        targets,
         mutations,
         foundry_config,
         skip_validate,
@@ -506,8 +593,17 @@ fn cmd_test(
         manifest.mutants.len()
     );
 
-    let owned_mutants: Vec<Mutant> = mutants_to_test.into_iter().cloned().collect();
-    let results = run_mutants_parallel(&owned_mutants, &project_root, forge_args, workers)?;
+    let owned_mutants: Vec<Mutant> = mutants_to_test
+        .into_iter()
+        .cloned()
+        .map(|mut m| {
+            if !forge_args.is_empty() {
+                m.forge_args = forge_args.to_vec();
+            }
+            m
+        })
+        .collect();
+    let results = run_mutants_parallel(&owned_mutants, &project_root, workers)?;
 
     if let Some(output_path) = &output {
         let json = serde_json::to_string_pretty(&results)?;
@@ -701,9 +797,9 @@ mod tests {
     }
 
     #[test]
-    fn test_resolve_files_and_config_no_files_found() {
+    fn test_resolve_targets_no_files_found() {
         let temp = assert_fs::TempDir::new().unwrap();
-        let result = resolve_files_and_config(vec![], temp.path().to_path_buf());
+        let result = resolve_targets(None, vec![], &[], temp.path());
         assert!(result.is_err());
         assert!(
             result
@@ -714,11 +810,13 @@ mod tests {
     }
 
     #[test]
-    fn test_resolve_files_and_config_nonexistent_file() {
+    fn test_resolve_targets_nonexistent_file() {
         let temp = assert_fs::TempDir::new().unwrap();
-        let result = resolve_files_and_config(
+        let result = resolve_targets(
+            None,
             vec![PathBuf::from("nonexistent.sol")],
-            temp.path().to_path_buf(),
+            &[],
+            temp.path(),
         );
         assert!(result.is_err());
         assert!(
@@ -727,5 +825,192 @@ mod tests {
                 .to_string()
                 .contains("failed to resolve file path")
         );
+    }
+
+    #[test]
+    fn test_resolve_targets_from_mutr_config() {
+        use crate::config::{MutrConfig, TargetConfig};
+        use assert_fs::prelude::*;
+
+        let temp = assert_fs::TempDir::new().unwrap();
+        temp.child("src/Token.sol").write_str("// sol").unwrap();
+
+        let config = MutrConfig {
+            targets: vec![TargetConfig {
+                files: vec!["src/Token.sol".to_string()],
+                contracts: Some(vec!["Token".to_string()]),
+                functions: None,
+                forge_args: Some(vec![
+                    "--match-contract".to_string(),
+                    "TokenTest".to_string(),
+                ]),
+            }],
+        };
+
+        let targets = resolve_targets(Some(config), vec![], &[], temp.path()).unwrap();
+        assert_eq!(targets.len(), 1);
+        assert_eq!(targets[0].contracts, vec!["Token"]);
+        assert_eq!(targets[0].forge_args, vec!["--match-contract", "TokenTest"]);
+    }
+
+    #[test]
+    fn test_resolve_targets_config_conflict_with_files() {
+        use crate::config::{MutrConfig, TargetConfig};
+
+        let temp = assert_fs::TempDir::new().unwrap();
+        let config = MutrConfig {
+            targets: vec![TargetConfig {
+                files: vec!["src/Token.sol".to_string()],
+                contracts: None,
+                functions: None,
+                forge_args: None,
+            }],
+        };
+
+        let result = resolve_targets(
+            Some(config),
+            vec![PathBuf::from("src/Other.sol")],
+            &[],
+            temp.path(),
+        );
+        assert!(result.is_err());
+        assert!(
+            result
+                .unwrap_err()
+                .to_string()
+                .contains("mutr.toml defines targets")
+        );
+    }
+
+    #[test]
+    fn test_resolve_targets_config_conflict_with_forge_args() {
+        use crate::config::{MutrConfig, TargetConfig};
+
+        let temp = assert_fs::TempDir::new().unwrap();
+        let config = MutrConfig {
+            targets: vec![TargetConfig {
+                files: vec!["src/Token.sol".to_string()],
+                contracts: None,
+                functions: None,
+                forge_args: None,
+            }],
+        };
+
+        let result = resolve_targets(
+            Some(config),
+            vec![],
+            &["--match-test".to_string(), "test_foo".to_string()],
+            temp.path(),
+        );
+        assert!(result.is_err());
+        assert!(
+            result
+                .unwrap_err()
+                .to_string()
+                .contains("mutr.toml defines targets")
+        );
+    }
+
+    #[test]
+    fn test_resolve_targets_config_glob_pattern() {
+        use crate::config::{MutrConfig, TargetConfig};
+        use assert_fs::prelude::*;
+
+        let temp = assert_fs::TempDir::new().unwrap();
+        temp.child("src/A.sol").write_str("// sol").unwrap();
+        temp.child("src/B.sol").write_str("// sol").unwrap();
+        temp.child("src/nested/C.sol").write_str("// sol").unwrap();
+
+        let config = MutrConfig {
+            targets: vec![TargetConfig {
+                files: vec!["src/**/*.sol".to_string()],
+                contracts: None,
+                functions: None,
+                forge_args: None,
+            }],
+        };
+
+        let targets = resolve_targets(Some(config), vec![], &[], temp.path()).unwrap();
+        assert_eq!(targets.len(), 3);
+    }
+
+    #[test]
+    fn test_resolve_targets_config_no_matching_files() {
+        use crate::config::{MutrConfig, TargetConfig};
+
+        let temp = assert_fs::TempDir::new().unwrap();
+        let config = MutrConfig {
+            targets: vec![TargetConfig {
+                files: vec!["nonexistent/**/*.sol".to_string()],
+                contracts: None,
+                functions: None,
+                forge_args: None,
+            }],
+        };
+
+        let result = resolve_targets(Some(config), vec![], &[], temp.path());
+        assert!(result.is_err());
+        assert!(
+            result
+                .unwrap_err()
+                .to_string()
+                .contains("no files matched pattern")
+        );
+    }
+
+    #[test]
+    fn test_resolve_targets_config_missing_literal_file() {
+        use crate::config::{MutrConfig, TargetConfig};
+
+        let temp = assert_fs::TempDir::new().unwrap();
+        let config = MutrConfig {
+            targets: vec![TargetConfig {
+                files: vec!["src/Missing.sol".to_string()],
+                contracts: None,
+                functions: None,
+                forge_args: None,
+            }],
+        };
+
+        let result = resolve_targets(Some(config), vec![], &[], temp.path());
+        assert!(result.is_err());
+        assert!(
+            result
+                .unwrap_err()
+                .to_string()
+                .contains("no files matched pattern")
+        );
+    }
+
+    #[test]
+    fn test_resolve_targets_no_config_no_files() {
+        let temp = assert_fs::TempDir::new().unwrap();
+        let result = resolve_targets(None, vec![], &[], temp.path());
+        assert!(result.is_err());
+        assert!(
+            result
+                .unwrap_err()
+                .to_string()
+                .contains("no Solidity files")
+        );
+    }
+
+    #[test]
+    fn test_resolve_targets_no_config_with_files() {
+        use assert_fs::prelude::*;
+
+        let temp = assert_fs::TempDir::new().unwrap();
+        temp.child("src/A.sol").write_str("// sol").unwrap();
+
+        let file = temp.path().join("src/A.sol");
+        let targets = resolve_targets(
+            None,
+            vec![file],
+            &["--match-test".to_string(), "foo".to_string()],
+            temp.path(),
+        )
+        .unwrap();
+        assert_eq!(targets.len(), 1);
+        assert_eq!(targets[0].forge_args, vec!["--match-test", "foo"]);
     }
 }
