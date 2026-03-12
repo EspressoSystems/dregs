@@ -655,6 +655,21 @@ solc = "0.8.30"
     }
 
     #[test]
+    fn test_parse_list_output_non_string_items() {
+        // Array items that aren't strings should be skipped
+        let json_output = r#"{"test/A.sol":{"ATest":[123, null, "testReal"]}}"#;
+        let result = parse_list_output(json_output).unwrap();
+        assert_eq!(result, vec!["ATest::testReal"]);
+    }
+
+    #[test]
+    fn test_parse_list_output_top_level_not_object() {
+        let result = parse_list_output("[1, 2, 3]");
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("expected JSON object"));
+    }
+
+    #[test]
     fn test_list_forge_tests_compilation_error() {
         use assert_fs::prelude::*;
 

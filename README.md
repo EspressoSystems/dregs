@@ -71,6 +71,10 @@ Merge results and report:
 mutr report ./mutants/manifest.json results-*.json --fail-under 0.8
 ```
 
+### CI
+
+See [`.github/workflows/example-mutation-test.yml`](.github/workflows/example-mutation-test.yml) for a sharded GitHub Actions workflow using release binaries.
+
 ### Passing arguments to forge
 
 Everything after `--` is forwarded to `forge test`:

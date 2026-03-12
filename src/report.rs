@@ -19,6 +19,10 @@ pub enum ReportError {
 
 pub type Result<T> = std::result::Result<T, ReportError>;
 
+fn escape_pipe(s: &str) -> String {
+    s.replace('|', "\\|")
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Report {
     pub total_mutants: u32,
@@ -148,6 +152,79 @@ impl Report {
         Ok(())
     }
 
+    pub fn print_summary_markdown(&self, mutants: &[Mutant]) {
+        self.write_summary_markdown(&mut std::io::stdout(), mutants)
+            .expect("failed to write markdown summary to stdout");
+    }
+
+    pub fn write_summary_markdown(
+        &self,
+        w: &mut impl Write,
+        mutants: &[Mutant],
+    ) -> std::io::Result<()> {
+        let mutant_map: HashMap<u32, &Mutant> = mutants.iter().map(|m| (m.id, m)).collect();
+
+        writeln!(w, "| ID | File:Line | Operator | Status | Killed By |")?;
+        writeln!(w, "|----|-----------|----------|--------|-----------|")?;
+
+        for result in &self.results {
+            let (status, killed_by_str) = if result.killed {
+                ("KILLED", result.killed_by.as_deref().unwrap_or("unknown"))
+            } else {
+                ("SURVIVED", "-")
+            };
+
+            let row = if let Some(mutant) = mutant_map.get(&result.mutant_id) {
+                let file = escape_pipe(&mutant.source_path.display().to_string());
+                let op = escape_pipe(&mutant.operator);
+                let kb = escape_pipe(killed_by_str);
+                format!(
+                    "| {} | {}:{} | {} | {} | {} |",
+                    result.mutant_id, file, mutant.line, op, status, kb
+                )
+            } else {
+                let kb = escape_pipe(killed_by_str);
+                format!("| {} | - | - | {} | {} |", result.mutant_id, status, kb)
+            };
+            writeln!(w, "{row}")?;
+        }
+
+        writeln!(w)?;
+        let score = format!(
+            "**Mutation score: {}/{} ({:.0}%)**",
+            self.killed_mutants,
+            self.total_mutants,
+            self.mutation_score * 100.0
+        );
+        writeln!(w, "{score}")?;
+
+        if self.survived_mutants > 0 {
+            writeln!(w)?;
+            writeln!(w, "### Surviving mutants")?;
+            for result in &self.results {
+                if !result.killed
+                    && let Some(mutant) = mutant_map.get(&result.mutant_id)
+                {
+                    writeln!(w)?;
+                    let header = format!(
+                        "**[{}] {}:{} {}**",
+                        result.mutant_id,
+                        mutant.source_path.display(),
+                        mutant.line,
+                        mutant.operator
+                    );
+                    writeln!(w, "{header}")?;
+                    writeln!(w, "```diff")?;
+                    writeln!(w, "- {}", mutant.original)?;
+                    writeln!(w, "+ {}", mutant.replacement)?;
+                    writeln!(w, "```")?;
+                }
+            }
+        }
+
+        Ok(())
+    }
+
     pub fn write_json(&self, path: &Path) -> Result<()> {
         let json = serde_json::to_string_pretty(self)?;
         fs::write(path, json)?;
@@ -160,6 +237,13 @@ mod tests {
     use super::*;
     use crate::generator::Mutant;
     use std::time::Duration;
+
+    #[test]
+    fn test_escape_pipe() {
+        assert_eq!(escape_pipe("a|b"), "a\\|b");
+        assert_eq!(escape_pipe("no pipes"), "no pipes");
+        assert_eq!(escape_pipe("a|b|c"), "a\\|b\\|c");
+    }
 
     fn sample_mixed_results() -> (Vec<TestResult>, Vec<Mutant>) {
         let results = vec![
@@ -453,6 +537,44 @@ mod tests {
         assert!(result.is_err());
     }
 
+    /// Writer that fails after writing `capacity` bytes.
+    struct LimitedWriter {
+        remaining: usize,
+    }
+
+    impl Write for LimitedWriter {
+        fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+            if self.remaining == 0 {
+                return Err(std::io::Error::other("capacity exceeded"));
+            }
+            let n = buf.len().min(self.remaining);
+            self.remaining -= n;
+            Ok(n)
+        }
+        fn flush(&mut self) -> std::io::Result<()> {
+            Ok(())
+        }
+    }
+
+    #[test]
+    fn test_write_summary_fails_midway() {
+        let (results, mutants) = sample_mixed_results();
+        let report = Report::new(results);
+        // Allow some bytes then fail
+        let mut w = LimitedWriter { remaining: 50 };
+        let result = report.write_summary(&mut w, &mutants);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_write_summary_markdown_fails_midway() {
+        let (results, mutants) = sample_mixed_results();
+        let report = Report::new(results);
+        let mut w = LimitedWriter { remaining: 80 };
+        let result = report.write_summary_markdown(&mut w, &mutants);
+        assert!(result.is_err());
+    }
+
     #[test]
     fn test_merge_ok() {
         use assert_fs::TempDir;
@@ -509,6 +631,159 @@ mod tests {
     }
 
     #[test]
+    fn test_write_summary_markdown_mixed() {
+        let (results, mutants) = sample_mixed_results();
+        let report = Report::new(results);
+
+        let mut output = Vec::new();
+        report
+            .write_summary_markdown(&mut output, &mutants)
+            .unwrap();
+        let output = String::from_utf8(output).unwrap();
+
+        // Table header
+        assert!(output.contains("| ID | File:Line | Operator | Status | Killed By |"));
+        assert!(output.contains("|----|-----------|----------|--------|-----------|"));
+
+        // Killed row
+        assert!(output.contains(
+            "| 1 | src/Counter.sol:12 | binary-op-mutation | KILLED | CounterTest::test_increment |"
+        ));
+
+        // Survived row
+        assert!(output.contains("| 2 | src/Counter.sol:15 | require-mutation | SURVIVED | - |"));
+
+        // Score
+        assert!(output.contains("**Mutation score: 1/2 (50%)**"));
+
+        // Surviving mutants section
+        assert!(output.contains("### Surviving mutants"));
+        assert!(output.contains("**[2] src/Counter.sol:15 require-mutation**"));
+        assert!(output.contains("```diff"));
+        assert!(output.contains("- require(true)"));
+        assert!(output.contains("+ require(false)"));
+    }
+
+    #[test]
+    fn test_write_summary_markdown_all_killed() {
+        let results = vec![
+            TestResult {
+                mutant_id: 1,
+                killed: true,
+                killed_by: Some("Test1".to_string()),
+                duration: Duration::from_secs(1),
+            },
+            TestResult {
+                mutant_id: 2,
+                killed: true,
+                killed_by: Some("Test2".to_string()),
+                duration: Duration::from_secs(1),
+            },
+        ];
+
+        let mutants = vec![
+            Mutant {
+                id: 1,
+                source_path: PathBuf::from("src/A.sol"),
+                relative_source_path: PathBuf::from("src/A.sol"),
+                mutant_path: PathBuf::from("gambit_out/mutants/1/A.sol"),
+                operator: "op1".to_string(),
+                original: "a".to_string(),
+                replacement: "b".to_string(),
+                line: 1,
+            },
+            Mutant {
+                id: 2,
+                source_path: PathBuf::from("src/B.sol"),
+                relative_source_path: PathBuf::from("src/B.sol"),
+                mutant_path: PathBuf::from("gambit_out/mutants/2/B.sol"),
+                operator: "op2".to_string(),
+                original: "c".to_string(),
+                replacement: "d".to_string(),
+                line: 2,
+            },
+        ];
+
+        let report = Report::new(results);
+
+        let mut output = Vec::new();
+        report
+            .write_summary_markdown(&mut output, &mutants)
+            .unwrap();
+        let output = String::from_utf8(output).unwrap();
+
+        assert!(output.contains("**Mutation score: 2/2 (100%)**"));
+        assert!(!output.contains("### Surviving mutants"));
+        assert!(!output.contains("```diff"));
+    }
+
+    #[test]
+    fn test_write_summary_markdown_empty() {
+        let report = Report::new(vec![]);
+        let mut output = Vec::new();
+        report.write_summary_markdown(&mut output, &[]).unwrap();
+        let output = String::from_utf8(output).unwrap();
+
+        assert!(output.contains("| ID | File:Line | Operator | Status | Killed By |"));
+        assert!(output.contains("**Mutation score: 0/0 (0%)**"));
+        assert!(!output.contains("### Surviving mutants"));
+    }
+
+    #[test]
+    fn test_write_summary_markdown_unknown_mutant_id() {
+        let results = vec![TestResult {
+            mutant_id: 999,
+            killed: true,
+            killed_by: Some("SomeTest".to_string()),
+            duration: Duration::from_secs(1),
+        }];
+
+        let report = Report::new(results);
+        let mut output = Vec::new();
+        report.write_summary_markdown(&mut output, &[]).unwrap();
+        let output = String::from_utf8(output).unwrap();
+        assert!(output.contains("| 999 | - | - | KILLED | SomeTest |"));
+    }
+
+    #[test]
+    fn test_write_summary_markdown_killed_without_test_name() {
+        let results = vec![TestResult {
+            mutant_id: 1,
+            killed: true,
+            killed_by: None,
+            duration: Duration::from_secs(1),
+        }];
+
+        let mutants = vec![Mutant {
+            id: 1,
+            source_path: PathBuf::from("src/Test.sol"),
+            relative_source_path: PathBuf::from("src/Test.sol"),
+            mutant_path: PathBuf::from("gambit_out/mutants/1/Test.sol"),
+            operator: "test-op".to_string(),
+            original: "old".to_string(),
+            replacement: "new".to_string(),
+            line: 5,
+        }];
+
+        let report = Report::new(results);
+        let mut output = Vec::new();
+        report
+            .write_summary_markdown(&mut output, &mutants)
+            .unwrap();
+        let output = String::from_utf8(output).unwrap();
+        assert!(output.contains("| 1 | src/Test.sol:5 | test-op | KILLED | unknown |"));
+    }
+
+    #[test]
+    fn test_write_summary_markdown_io_error() {
+        let (results, mutants) = sample_mixed_results();
+        let report = Report::new(results);
+        let mut buf = [0u8; 0];
+        let result = report.write_summary_markdown(&mut buf.as_mut_slice(), &mutants);
+        assert!(result.is_err());
+    }
+
+    #[test]
     fn test_merge_duplicate_ids_fails() {
         use assert_fs::TempDir;
 
@@ -529,6 +804,30 @@ mod tests {
         std::fs::write(&file2, &json).unwrap();
 
         let result = Report::merge(&[file1, file2]);
+        pretty_assertions::assert_matches!(result, Err(ReportError::Generation(_)));
+    }
+
+    #[test]
+    fn test_merge_nonexistent_file_fails() {
+        let result = Report::merge(&[PathBuf::from("/nonexistent/results.json")]);
+        pretty_assertions::assert_matches!(result, Err(ReportError::Generation(_)));
+        assert!(
+            result
+                .unwrap_err()
+                .to_string()
+                .contains("/nonexistent/results.json")
+        );
+    }
+
+    #[test]
+    fn test_merge_invalid_json_fails() {
+        use assert_fs::TempDir;
+
+        let dir = TempDir::new().unwrap();
+        let file = dir.path().join("bad.json");
+        std::fs::write(&file, "not valid json").unwrap();
+
+        let result = Report::merge(&[file]);
         pretty_assertions::assert_matches!(result, Err(ReportError::Generation(_)));
     }
 }

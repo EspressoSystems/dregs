@@ -4,11 +4,9 @@
 
 A Rust CLI tool that runs mutation testing for Solidity projects using Foundry. Uses Gambit for mutation generation with an abstraction layer for future generator support.
 
-## Status: v0.4 Complete
-
 ## Roadmap
 
-### MVP (Complete)
+### Core Mutation Testing (Complete)
 
 - [x] Project setup (flake.nix, Cargo.toml)
 - [x] Gambit library integration
@@ -16,7 +14,7 @@ A Rust CLI tool that runs mutation testing for Solidity projects using Foundry. 
 - [x] Report mutation score + surviving mutants + which test killed
 - [x] Wire up CLI to run full mutation testing flow
 
-### v0.2 - Nix Package with Crane (Complete)
+### Nix Package with Crane (Complete)
 
 - [x] Add crane input to flake.nix
 - [x] Build mutr with craneLib.buildPackage
@@ -24,7 +22,7 @@ A Rust CLI tool that runs mutation testing for Solidity projects using Foundry. 
 - [x] Export packages.default and apps.default
 - [x] Usage: `nix run github:sveitser/mutr -- run --project .`
 
-### v0.3 - Foundry.toml Configuration (Complete)
+### Foundry.toml Configuration (Complete)
 
 - [x] Parse foundry.toml for project settings
 - [x] Auto-detect project root from file paths
@@ -35,7 +33,7 @@ A Rust CLI tool that runs mutation testing for Solidity projects using Foundry. 
 - [x] Note: via_ir not supported by gambit upstream
 - [x] Note: gambit expects solc binary path, version strings from foundry.toml are ignored with warning
 
-### v0.4 - Parallel Execution & CI Sharding (Complete)
+### Parallel Execution & CI Sharding (Complete)
 
 - [x] Run multiple mutants concurrently with rayon
 - [x] Configurable `--workers N` flag (default 1)
@@ -44,13 +42,15 @@ A Rust CLI tool that runs mutation testing for Solidity projects using Foundry. 
 - [x] `report` subcommand: merge partial result files, print summary, `--fail-under` threshold
 - [x] Manifest format: JSON manifest + mutant files with relative paths
 - [x] Partition: round-robin assignment by mutant ID
+- [x] GitHub Actions CI/CD (lint, test, coverage, mutation test, release)
+- [x] `report --format markdown` for CI step summaries
 
-### v0.5 - Incremental Testing
+### Incremental Testing
 
 - [ ] Cache test results by mutant hash
 - [ ] Only re-test changed mutants
 
-### v0.6 - Coverage Filtering
+### Coverage Filtering
 
 - [ ] Parse forge coverage output
 - [ ] Only mutate lines covered by tests
@@ -60,6 +60,21 @@ A Rust CLI tool that runs mutation testing for Solidity projects using Foundry. 
 Use direnv with nix-direnv to automatically load the dev environment.
 
 Use the rust-dev agent for Rust implementation tasks.
+
+### Common Commands
+
+- `just fmt` - Format all code (cargo fmt + prettier on tracked files)
+- `just check` - Format, compile check, and lint
+- `just test` - Run tests with nextest
+- `just cov` - Run coverage and show summary
+- `just cov-check` - Check coverage meets thresholds
+- `just cov-html` - Open HTML coverage report
+- `just cov-uncovered` - Show summary with uncovered lines listed per file
+- `just cov-text` - Show annotated source with hit counts per line
+- `just cov-regions` - Show uncovered regions from JSON coverage data
+- `just cov-functions` - Show uncovered functions from JSON coverage data
+- `just example` - Run mutr on the simple fixture
+- `just clean` - Remove generated output
 
 ### Commits
 
@@ -77,7 +92,7 @@ Use semantic commit messages: `type: description`
 - rustfmt
 - clippy (with -D warnings, runs on rust + toml)
 - cargo nextest run (runs on rust + toml)
-- cargo-llvm-cov (99% line coverage required, runs on rust + toml; skipped on Darwin)
+- cargo-llvm-cov (99% line, 97% region, 97% function coverage via `just cov-check`; skipped on Darwin)
 - typos (spell checking)
 - cargo-lock (sync Cargo.lock with Cargo.toml)
 - nixpkgs-fmt (nix formatting)
@@ -98,8 +113,9 @@ Use semantic commit messages: `type: description`
 ```
 mutr
 ├── src/
-│   ├── main.rs           # CLI entry point, subcommands (run/generate/test/report)
+│   ├── main.rs           # Thin entry point, delegates to cli::run
 │   ├── lib.rs            # Library root, test utilities
+│   ├── cli.rs            # CLI logic: clap structs, subcommands, orchestration
 │   ├── config.rs         # foundry.toml parsing, project root detection, remapping resolution
 │   ├── generator/
 │   │   ├── mod.rs        # Generator trait, Mutant type
@@ -107,7 +123,17 @@ mutr
 │   ├── manifest.rs       # Manifest read/write for CI sharding
 │   ├── partition.rs      # Round-robin partition for CI sharding
 │   ├── runner.rs         # Test runner (forge test)
-│   └── report.rs         # Results reporting, merge partial results
+│   └── report.rs         # Results reporting, merge partial results, --format markdown
+├── .github/
+│   ├── actions/
+│   │   ├── install-solc/ # Composite action: install solc binary
+│   │   └── install-mutr/ # Composite action: install mutr from releases
+│   └── workflows/
+│       ├── lint.yml      # fmt, clippy, typos, prettier
+│       ├── test.yml      # nextest, coverage
+│       ├── mutation-test.yml  # Sharded mutation testing (self-test)
+│       ├── release.yml   # Native multi-arch builds + GitHub release
+│       └── example-mutation-test.yml  # Example sharded workflow for users
 ├── Cargo.toml
 ├── justfile              # Common dev commands
 └── CLAUDE.md             # Roadmap

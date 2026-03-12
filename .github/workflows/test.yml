@@ -1,0 +1,29 @@
+name: Test
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: Swatinem/rust-cache@v2
+      - uses: taiki-e/install-action@cargo-nextest
+      - uses: foundry-rs/foundry-toolchain@v1
+      - uses: ./.github/actions/install-solc
+      - run: cargo nextest run
+
+  coverage:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: Swatinem/rust-cache@v2
+      - uses: taiki-e/install-action@cargo-llvm-cov
+      - uses: taiki-e/install-action@just
+      - uses: foundry-rs/foundry-toolchain@v1
+      - uses: ./.github/actions/install-solc
+      - run: just cov-check
