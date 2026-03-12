@@ -91,7 +91,7 @@ See [`.github/workflows/example-mutation-test.yml`](.github/workflows/example-mu
 
 ### Target configuration
 
-Create a `mutr.toml` in your project root to pair contracts with their tests:
+Create a `mutr.toml` in your project root to pair contracts with their tests. See [`tests/fixtures/simple/mutr.toml`](tests/fixtures/simple/mutr.toml) for a working example.
 
 ```toml
 [[target]]

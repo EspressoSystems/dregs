@@ -1,6 +1,9 @@
 name: "Example: Mutation Test (Sharded)"
 
 on:
+  push:
+    branches: [main]
+  pull_request:
   workflow_dispatch:
 
 env:
@@ -25,7 +28,7 @@ jobs:
           curl -fL -o /usr/local/bin/mutr "$URL"
           chmod +x /usr/local/bin/mutr
           mutr --version
-      - run: mutr generate --project . --output ./mutants
+      - run: mutr generate --project tests/fixtures/simple --output ./mutants
       - uses: actions/upload-artifact@v7
         with:
           name: mutants
@@ -60,7 +63,7 @@ jobs:
       - run: >-
           mutr test
           --manifest ./mutants/manifest.json
-          --project .
+          --project tests/fixtures/simple
           --partition slice:${{ matrix.shard }}/4
           --output results-${{ matrix.shard }}.json
       - uses: actions/upload-artifact@v7

@@ -91,6 +91,8 @@ Use the rust-dev agent for Rust implementation tasks.
 
 Use semantic commit messages: `type: description`
 
+- Present tense ("add" not "added")
+- Bullet points in body for multiple changes
 - feat: new feature
 - fix: bug fix
 - docs: documentation
