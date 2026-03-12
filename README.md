@@ -7,8 +7,22 @@ Generates mutants with [Gambit](https://github.com/Certora/gambit), runs
 
 ## Install
 
+### From GitHub releases
+
+Download a binary from the [releases page](https://github.com/EspressoSystems/mutr/releases).
+
+### From source
+
 ```bash
-nix run github:EspressoSystems/mutr.git -- run --project .
+cargo install --git https://github.com/EspressoSystems/mutr
+```
+
+Requires `forge` and `solc` in PATH.
+
+### With nix
+
+```bash
+nix run github:EspressoSystems/mutr -- run --project .
 ```
 
 ## Development
