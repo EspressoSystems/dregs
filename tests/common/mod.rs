@@ -1,6 +1,7 @@
 use assert_cmd::Command;
 use assert_fs::TempDir;
 use std::path::{Path, PathBuf};
+use std::process;
 
 pub fn fixture(name: &str) -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -66,6 +67,33 @@ fn copy_dir_recursive(src: &Path, dst: &Path) -> std::io::Result<()> {
     }
 
     Ok(())
+}
+
+pub fn init_git_repo(dir: &Path) {
+    for args in [
+        vec!["init"],
+        vec!["config", "user.email", "test@test.com"],
+        vec!["config", "user.name", "Test"],
+    ] {
+        process::Command::new("git")
+            .args(&args)
+            .current_dir(dir)
+            .output()
+            .unwrap();
+    }
+}
+
+pub fn git_add_commit(dir: &Path, msg: &str) {
+    process::Command::new("git")
+        .args(["add", "."])
+        .current_dir(dir)
+        .output()
+        .unwrap();
+    process::Command::new("git")
+        .args(["commit", "-m", msg])
+        .current_dir(dir)
+        .output()
+        .unwrap();
 }
 
 #[cfg(test)]

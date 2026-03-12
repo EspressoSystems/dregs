@@ -567,6 +567,7 @@ mod tests {
         let report = Report::new(results);
         // Allow some bytes then fail
         let mut w = LimitedWriter { remaining: 50 };
+        assert!(w.flush().is_ok());
         let result = report.write_summary(&mut w, &mutants);
         assert!(result.is_err());
     }

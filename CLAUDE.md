@@ -56,6 +56,14 @@ A Rust CLI tool that runs mutation testing for Solidity projects using Foundry. 
 - [x] `--config` flag to override dregs.toml path
 - [x] Backward compatible: old manifests without forge_args deserialize fine
 
+### Diff-Based Filtering (Complete)
+
+- [x] `--diff-base <ref>` flag on `run` and `generate` subcommands
+- [x] Parse `git diff <ref>...HEAD --unified=0 -- '*.sol'` for changed lines
+- [x] Pre-generation: filter target files to only those in the diff
+- [x] Post-generation: filter mutants to only those on changed lines
+- [x] Clean exit with 100% score when no changes affect targets
+
 ### Incremental Testing
 
 - [ ] Cache test results by mutant hash
@@ -130,6 +138,7 @@ dregs
 │   ├── lib.rs            # Library root, test utilities
 │   ├── cli.rs            # CLI logic: clap structs, subcommands, orchestration
 │   ├── config.rs         # foundry.toml + dregs.toml parsing, project root detection, remapping resolution
+│   ├── diff.rs           # Git diff parsing, mutant/target filtering by changed lines
 │   ├── generator/
 │   │   ├── mod.rs        # Generator trait, Mutant type, FileTarget
 │   │   └── gambit.rs     # Gambit implementation with contract/function filters
