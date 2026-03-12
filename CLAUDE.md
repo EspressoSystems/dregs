@@ -66,9 +66,13 @@ Use the rust-dev agent for Rust implementation tasks.
 - `just fmt` - Format all code (cargo fmt + prettier on tracked files)
 - `just check` - Format, compile check, and lint
 - `just test` - Run tests with nextest
-- `just cov` - Run coverage
-- `just cov-check` - Check coverage meets 100% threshold
+- `just cov` - Run coverage and show summary
+- `just cov-check` - Check coverage meets thresholds
 - `just cov-html` - Open HTML coverage report
+- `just cov-uncovered` - Show summary with uncovered lines listed per file
+- `just cov-text` - Show annotated source with hit counts per line
+- `just cov-regions` - Show uncovered regions from JSON coverage data
+- `just cov-functions` - Show uncovered functions from JSON coverage data
 - `just example` - Run mutr on the simple fixture
 - `just clean` - Remove generated output
 
@@ -88,7 +92,7 @@ Use semantic commit messages: `type: description`
 - rustfmt
 - clippy (with -D warnings, runs on rust + toml)
 - cargo nextest run (runs on rust + toml)
-- cargo-llvm-cov (99% line coverage required, runs on rust + toml; skipped on Darwin)
+- cargo-llvm-cov (99% line, 97% region, 97% function coverage via `just cov-check`; skipped on Darwin)
 - typos (spell checking)
 - cargo-lock (sync Cargo.lock with Cargo.toml)
 - nixpkgs-fmt (nix formatting)
@@ -109,8 +113,9 @@ Use semantic commit messages: `type: description`
 ```
 mutr
 ├── src/
-│   ├── main.rs           # CLI entry point, subcommands (run/generate/test/report)
+│   ├── main.rs           # Thin entry point, delegates to cli::run
 │   ├── lib.rs            # Library root, test utilities
+│   ├── cli.rs            # CLI logic: clap structs, subcommands, orchestration
 │   ├── config.rs         # foundry.toml parsing, project root detection, remapping resolution
 │   ├── generator/
 │   │   ├── mod.rs        # Generator trait, Mutant type

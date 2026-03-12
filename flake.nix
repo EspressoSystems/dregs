@@ -53,7 +53,7 @@
                 entry =
                   if pkgs.stdenv.isDarwin
                   then "echo 'WARNING: cargo-llvm-cov skipped on Darwin (package broken)'"
-                  else "${pkgs.cargo-llvm-cov}/bin/cargo-llvm-cov llvm-cov --fail-under-lines 99";
+                  else "${pkgs.just}/bin/just cov-check";
                 types_or = [ "rust" "toml" ];
                 pass_filenames = false;
               };
@@ -102,6 +102,7 @@
               pkgs.typos
               pkgs.nodePackages.prettier
               pkgs.nixpkgs-fmt
+              pkgs.python3
             ] ++ pkgs.lib.optionals (!pkgs.stdenv.isDarwin) [
               pkgs.cargo-llvm-cov
             ];

@@ -1,17 +1,12 @@
 use super::{GeneratorConfig, Mutant, MutationGenerator, Result};
 use gambit::{MutateParams, run_mutate};
 
+#[derive(Default)]
 pub struct GambitGenerator;
 
 impl GambitGenerator {
     pub fn new() -> Self {
         Self
-    }
-}
-
-impl Default for GambitGenerator {
-    fn default() -> Self {
-        Self::new()
     }
 }
 

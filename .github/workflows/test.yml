@@ -11,11 +11,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
-      - uses: taiki-e/install-action@v2
-        with:
-          tool: cargo-nextest
+      - uses: taiki-e/install-action@cargo-nextest
       - uses: foundry-rs/foundry-toolchain@v1
       - uses: ./.github/actions/install-solc
       - run: cargo nextest run
@@ -24,13 +21,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          components: llvm-tools-preview
       - uses: Swatinem/rust-cache@v2
-      - uses: taiki-e/install-action@v2
-        with:
-          tool: cargo-llvm-cov
+      - uses: taiki-e/install-action@cargo-llvm-cov
+      - uses: taiki-e/install-action@just
       - uses: foundry-rs/foundry-toolchain@v1
       - uses: ./.github/actions/install-solc
-      - run: cargo llvm-cov --fail-under-lines 99
+      - run: just cov-check

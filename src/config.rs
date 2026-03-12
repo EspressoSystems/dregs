@@ -209,4 +209,39 @@ optimizer = true
         let root = find_project_root(&dir).unwrap();
         assert_eq!(root, temp.path());
     }
+
+    #[test]
+    fn test_resolve_remappings_failure() {
+        let temp = TempDir::new().unwrap();
+        // No foundry project -> forge remappings will fail
+        let remappings = resolve_remappings(temp.path());
+        assert!(remappings.is_empty());
+    }
+
+    #[test]
+    fn test_resolve_remappings_success() {
+        let (_temp, project_root) = crate::test_utils::fixture_to_temp("simple");
+        // Verify forge actually succeeds on this fixture (not silently falling through to failure path)
+        let output = std::process::Command::new("forge")
+            .arg("remappings")
+            .arg("--root")
+            .arg(&project_root)
+            .output()
+            .expect("forge must be in PATH");
+        assert!(output.status.success(), "forge remappings must succeed");
+        // Now test our function takes the success path
+        let remappings = resolve_remappings(&project_root);
+        // Simple fixture has no lib deps, so result is empty
+        assert!(remappings.is_empty());
+    }
+
+    #[test]
+    fn test_parse_foundry_toml_invalid_toml() {
+        let temp = TempDir::new().unwrap();
+        temp.child("foundry.toml")
+            .write_str("this is not valid { toml }")
+            .unwrap();
+        let result = parse_foundry_toml(temp.path());
+        assert!(result.is_err());
+    }
 }

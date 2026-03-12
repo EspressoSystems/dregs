@@ -87,6 +87,7 @@ mod tests {
         assert!("hash:1/2".parse::<Partition>().is_err());
         assert!("slice:1/0".parse::<Partition>().is_err());
         assert!("slice:abc/2".parse::<Partition>().is_err());
+        assert!("slice:1/abc".parse::<Partition>().is_err());
         assert!("slice:1/2/3".parse::<Partition>().is_err());
     }
 

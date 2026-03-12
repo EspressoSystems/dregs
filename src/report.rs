@@ -537,6 +537,44 @@ mod tests {
         assert!(result.is_err());
     }
 
+    /// Writer that fails after writing `capacity` bytes.
+    struct LimitedWriter {
+        remaining: usize,
+    }
+
+    impl Write for LimitedWriter {
+        fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+            if self.remaining == 0 {
+                return Err(std::io::Error::other("capacity exceeded"));
+            }
+            let n = buf.len().min(self.remaining);
+            self.remaining -= n;
+            Ok(n)
+        }
+        fn flush(&mut self) -> std::io::Result<()> {
+            Ok(())
+        }
+    }
+
+    #[test]
+    fn test_write_summary_fails_midway() {
+        let (results, mutants) = sample_mixed_results();
+        let report = Report::new(results);
+        // Allow some bytes then fail
+        let mut w = LimitedWriter { remaining: 50 };
+        let result = report.write_summary(&mut w, &mutants);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_write_summary_markdown_fails_midway() {
+        let (results, mutants) = sample_mixed_results();
+        let report = Report::new(results);
+        let mut w = LimitedWriter { remaining: 80 };
+        let result = report.write_summary_markdown(&mut w, &mutants);
+        assert!(result.is_err());
+    }
+
     #[test]
     fn test_merge_ok() {
         use assert_fs::TempDir;
@@ -766,6 +804,30 @@ mod tests {
         std::fs::write(&file2, &json).unwrap();
 
         let result = Report::merge(&[file1, file2]);
+        pretty_assertions::assert_matches!(result, Err(ReportError::Generation(_)));
+    }
+
+    #[test]
+    fn test_merge_nonexistent_file_fails() {
+        let result = Report::merge(&[PathBuf::from("/nonexistent/results.json")]);
+        pretty_assertions::assert_matches!(result, Err(ReportError::Generation(_)));
+        assert!(
+            result
+                .unwrap_err()
+                .to_string()
+                .contains("/nonexistent/results.json")
+        );
+    }
+
+    #[test]
+    fn test_merge_invalid_json_fails() {
+        use assert_fs::TempDir;
+
+        let dir = TempDir::new().unwrap();
+        let file = dir.path().join("bad.json");
+        std::fs::write(&file, "not valid json").unwrap();
+
+        let result = Report::merge(&[file]);
         pretty_assertions::assert_matches!(result, Err(ReportError::Generation(_)));
     }
 }
