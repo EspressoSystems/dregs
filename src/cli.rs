@@ -537,6 +537,17 @@ fn baseline_forge_arg_sets(
     result
 }
 
+fn unique_forge_args_from_mutants(mutants: &[Mutant]) -> Vec<Vec<String>> {
+    let mut seen = std::collections::HashSet::new();
+    let mut result = Vec::new();
+    for mutant in mutants {
+        if seen.insert(mutant.forge_args.clone()) {
+            result.push(mutant.forge_args.clone());
+        }
+    }
+    result
+}
+
 fn run_baseline_tests(project_root: &Path, forge_args: &[String]) -> Result<()> {
     if !forge_args.is_empty() {
         let test_names =
@@ -750,8 +761,14 @@ fn cmd_test(
 
     let manifest = Manifest::read(&manifest_path).context("failed to read manifest")?;
 
-    // cmd_test doesn't load dregs.toml, so baseline runs with CLI forge_args only
-    run_baseline_tests(&project_root, forge_args)?;
+    let baseline_arg_sets = if forge_args.is_empty() {
+        unique_forge_args_from_mutants(&manifest.mutants)
+    } else {
+        vec![forge_args.to_vec()]
+    };
+    for args in &baseline_arg_sets {
+        run_baseline_tests(&project_root, args)?;
+    }
 
     let mutants_to_test: Vec<&Mutant> = if let Some(partition_str) = &partition {
         let p: Partition = partition_str.parse().context("failed to parse partition")?;
@@ -1487,6 +1504,68 @@ diff --git a/src/Counter.sol b/src/Counter.sol
         };
 
         let result = baseline_forge_arg_sets(Some(&config), &[]);
+        assert_eq!(result, vec![Vec::<String>::new()]);
+    }
+
+    #[test]
+    fn test_unique_forge_args_from_mutants() {
+        let mutants = vec![
+            Mutant {
+                id: 1,
+                source_path: PathBuf::from("src/A.sol"),
+                relative_source_path: PathBuf::from("src/A.sol"),
+                mutant_path: PathBuf::from("mutant_1.sol"),
+                operator: "op".to_string(),
+                original: "a".to_string(),
+                replacement: "b".to_string(),
+                line: 1,
+                forge_args: vec!["--match-contract".to_string(), "ATest".to_string()],
+            },
+            Mutant {
+                id: 2,
+                source_path: PathBuf::from("src/B.sol"),
+                relative_source_path: PathBuf::from("src/B.sol"),
+                mutant_path: PathBuf::from("mutant_2.sol"),
+                operator: "op".to_string(),
+                original: "a".to_string(),
+                replacement: "b".to_string(),
+                line: 1,
+                forge_args: vec!["--match-contract".to_string(), "BTest".to_string()],
+            },
+            Mutant {
+                id: 3,
+                source_path: PathBuf::from("src/A2.sol"),
+                relative_source_path: PathBuf::from("src/A2.sol"),
+                mutant_path: PathBuf::from("mutant_3.sol"),
+                operator: "op".to_string(),
+                original: "a".to_string(),
+                replacement: "b".to_string(),
+                line: 1,
+                forge_args: vec!["--match-contract".to_string(), "ATest".to_string()],
+            },
+        ];
+
+        let result = unique_forge_args_from_mutants(&mutants);
+        assert_eq!(result.len(), 2);
+        assert_eq!(result[0], vec!["--match-contract", "ATest"]);
+        assert_eq!(result[1], vec!["--match-contract", "BTest"]);
+    }
+
+    #[test]
+    fn test_unique_forge_args_from_mutants_empty_args() {
+        let mutants = vec![Mutant {
+            id: 1,
+            source_path: PathBuf::from("src/A.sol"),
+            relative_source_path: PathBuf::from("src/A.sol"),
+            mutant_path: PathBuf::from("mutant_1.sol"),
+            operator: "op".to_string(),
+            original: "a".to_string(),
+            replacement: "b".to_string(),
+            line: 1,
+            forge_args: vec![],
+        }];
+
+        let result = unique_forge_args_from_mutants(&mutants);
         assert_eq!(result, vec![Vec::<String>::new()]);
     }
 }
