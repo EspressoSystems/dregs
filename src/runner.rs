@@ -8,7 +8,7 @@ use tempfile::TempDir;
 use thiserror::Error;
 
 #[derive(Error, Debug)]
-pub enum RunnerError {
+pub(crate) enum RunnerError {
     #[error("failed to run tests: {0}")]
     TestExecution(String),
     #[error("io error: {0}")]
@@ -19,25 +19,24 @@ pub enum RunnerError {
     MutantApplication(String),
 }
 
-pub type Result<T> = std::result::Result<T, RunnerError>;
+pub(crate) type Result<T> = std::result::Result<T, RunnerError>;
 
 #[derive(Debug)]
-pub struct ForgeTestResult {
-    pub failed: bool,
-    pub killed_by: Option<String>,
-    pub stdout: String,
-    pub stderr: String,
+pub(crate) struct ForgeTestResult {
+    pub(crate) failed: bool,
+    pub(crate) killed_by: Option<String>,
+    pub(crate) stderr: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct TestResult {
-    pub mutant_id: u32,
-    pub killed: bool,
-    pub killed_by: Option<String>,
-    pub duration: Duration,
+pub(crate) struct TestResult {
+    pub(crate) mutant_id: u32,
+    pub(crate) killed: bool,
+    pub(crate) killed_by: Option<String>,
+    pub(crate) duration: Duration,
 }
 
-pub fn run_mutant(mutant: &Mutant, project_root: &Path) -> Result<TestResult> {
+pub(crate) fn run_mutant(mutant: &Mutant, project_root: &Path) -> Result<TestResult> {
     let start = Instant::now();
 
     let temp_dir = TempDir::new()?;
@@ -115,7 +114,10 @@ fn apply_mutant_to_project(mutant: &Mutant, temp_project: &Path) -> Result<()> {
     Ok(())
 }
 
-pub fn run_forge_test(project_root: &Path, extra_args: &[String]) -> Result<ForgeTestResult> {
+pub(crate) fn run_forge_test(
+    project_root: &Path,
+    extra_args: &[String],
+) -> Result<ForgeTestResult> {
     let output = Command::new("forge")
         .arg("test")
         .arg("--json")
@@ -130,7 +132,6 @@ pub fn run_forge_test(project_root: &Path, extra_args: &[String]) -> Result<Forg
         return Ok(ForgeTestResult {
             failed: false,
             killed_by: None,
-            stdout,
             stderr,
         });
     }
@@ -151,12 +152,11 @@ pub fn run_forge_test(project_root: &Path, extra_args: &[String]) -> Result<Forg
     Ok(ForgeTestResult {
         failed: true,
         killed_by,
-        stdout,
         stderr,
     })
 }
 
-pub fn list_forge_tests(project_root: &Path, extra_args: &[String]) -> Result<Vec<String>> {
+pub(crate) fn list_forge_tests(project_root: &Path, extra_args: &[String]) -> Result<Vec<String>> {
     let output = Command::new("forge")
         .arg("test")
         .arg("--json")

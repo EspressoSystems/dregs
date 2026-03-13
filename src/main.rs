@@ -1,7 +1,7 @@
 use anyhow::Result;
 use clap::Parser;
-use dregs::cli::{Cli, run};
+use dregs::Cli;
 
 fn main() -> Result<()> {
-    run(Cli::parse())
+    dregs::run(Cli::parse())
 }

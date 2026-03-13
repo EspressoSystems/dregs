@@ -6,24 +6,24 @@ use std::process::Command;
 use thiserror::Error;
 
 #[derive(Error, Debug)]
-pub enum ConfigError {
+pub(crate) enum ConfigError {
     #[error("failed to read foundry.toml: {0}")]
-    ReadError(#[from] std::io::Error),
+    Read(#[from] std::io::Error),
     #[error("failed to parse foundry.toml: {0}")]
-    ParseError(#[from] toml::de::Error),
+    Parse(#[from] toml::de::Error),
     #[error("invalid dregs.toml: {0}")]
-    DregsConfigError(String),
+    DregsConfig(String),
 }
 
-pub type Result<T> = std::result::Result<T, ConfigError>;
+pub(crate) type Result<T> = std::result::Result<T, ConfigError>;
 
 #[derive(Debug, Clone, Default)]
-pub struct FoundryConfig {
-    pub solc: Option<String>,
-    pub optimizer: bool,
-    pub evm_version: Option<String>,
-    pub via_ir: bool,
-    pub remappings: Vec<String>,
+pub(crate) struct FoundryConfig {
+    pub(crate) solc: Option<String>,
+    pub(crate) optimizer: bool,
+    pub(crate) evm_version: Option<String>,
+    pub(crate) via_ir: bool,
+    pub(crate) remappings: Vec<String>,
 }
 
 #[derive(Deserialize)]
@@ -40,7 +40,7 @@ struct ProfileConfig {
     remappings: Option<Vec<String>>,
 }
 
-pub fn parse_foundry_toml(project_root: &Path) -> Result<Option<FoundryConfig>> {
+pub(crate) fn parse_foundry_toml(project_root: &Path) -> Result<Option<FoundryConfig>> {
     let toml_path = project_root.join("foundry.toml");
     if !toml_path.exists() {
         return Ok(None);
@@ -63,7 +63,7 @@ pub fn parse_foundry_toml(project_root: &Path) -> Result<Option<FoundryConfig>> 
     }))
 }
 
-pub fn resolve_remappings(project_root: &Path) -> Vec<String> {
+pub(crate) fn resolve_remappings(project_root: &Path) -> Vec<String> {
     let output = Command::new("forge")
         .arg("remappings")
         .arg("--root")
@@ -84,20 +84,20 @@ pub fn resolve_remappings(project_root: &Path) -> Vec<String> {
 }
 
 #[derive(Debug, Clone, Deserialize)]
-pub struct DregsConfig {
+pub(crate) struct DregsConfig {
     #[serde(rename = "target")]
-    pub targets: Vec<TargetConfig>,
+    pub(crate) targets: Vec<TargetConfig>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
-pub struct TargetConfig {
-    pub files: Vec<String>,
-    pub contracts: Option<Vec<String>>,
-    pub functions: Option<Vec<String>>,
-    pub forge_args: Option<Vec<String>>,
+pub(crate) struct TargetConfig {
+    pub(crate) files: Vec<String>,
+    pub(crate) contracts: Option<Vec<String>>,
+    pub(crate) functions: Option<Vec<String>>,
+    pub(crate) forge_args: Option<Vec<String>>,
 }
 
-pub fn parse_dregs_toml(
+pub(crate) fn parse_dregs_toml(
     project_root: &Path,
     config_path: Option<&Path>,
 ) -> Result<Option<DregsConfig>> {
@@ -106,7 +106,7 @@ pub fn parse_dregs_toml(
         .unwrap_or_else(|| project_root.join("dregs.toml"));
     if !toml_path.exists() {
         if config_path.is_some() {
-            return Err(ConfigError::DregsConfigError(format!(
+            return Err(ConfigError::DregsConfig(format!(
                 "config file not found: {}",
                 toml_path.display()
             )));
@@ -116,17 +116,15 @@ pub fn parse_dregs_toml(
 
     let content = fs::read_to_string(&toml_path)?;
     let config: DregsConfig =
-        toml::from_str(&content).map_err(|e| ConfigError::DregsConfigError(e.to_string()))?;
+        toml::from_str(&content).map_err(|e| ConfigError::DregsConfig(e.to_string()))?;
 
     if config.targets.is_empty() {
-        return Err(ConfigError::DregsConfigError(
-            "no targets defined".to_string(),
-        ));
+        return Err(ConfigError::DregsConfig("no targets defined".to_string()));
     }
 
     for (i, t) in config.targets.iter().enumerate() {
         if t.files.is_empty() {
-            return Err(ConfigError::DregsConfigError(format!(
+            return Err(ConfigError::DregsConfig(format!(
                 "target {} has no files",
                 i + 1
             )));
@@ -136,7 +134,7 @@ pub fn parse_dregs_toml(
     Ok(Some(config))
 }
 
-pub fn find_project_root(file: &Path) -> Option<std::path::PathBuf> {
+pub(crate) fn find_project_root(file: &Path) -> Option<std::path::PathBuf> {
     let mut dir = if file.is_file() { file.parent()? } else { file };
     loop {
         if dir.join("foundry.toml").exists() {

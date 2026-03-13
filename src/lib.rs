@@ -1,14 +1,16 @@
-pub mod cli;
-pub mod config;
-pub mod diff;
-pub mod generator;
-pub mod manifest;
-pub mod partition;
-pub mod report;
-pub mod runner;
+mod cli;
+mod config;
+mod diff;
+mod generator;
+mod manifest;
+mod partition;
+mod report;
+mod runner;
+
+pub use cli::{Cli, run};
 
 #[cfg(test)]
-pub(crate) mod test_utils {
+mod test_utils {
     use std::path::{Path, PathBuf};
     use std::process::Command;
 
@@ -23,30 +25,26 @@ pub(crate) mod test_utils {
         (temp_dir, path)
     }
 
+    fn git(dir: &Path, args: &[&str]) -> std::process::Output {
+        let output = Command::new("git")
+            .args(args)
+            .current_dir(dir)
+            .env("GIT_CONFIG_NOSYSTEM", "1")
+            .env("GIT_CONFIG_GLOBAL", "/dev/null")
+            .output()
+            .expect("git command failed");
+        assert!(output.status.success(), "git {:?} failed", args);
+        output
+    }
+
     pub fn init_git_repo(dir: &Path) {
-        for args in [
-            vec!["init"],
-            vec!["config", "user.email", "test@test.com"],
-            vec!["config", "user.name", "Test"],
-        ] {
-            Command::new("git")
-                .args(&args)
-                .current_dir(dir)
-                .output()
-                .unwrap();
-        }
+        git(dir, &["init"]);
+        git(dir, &["config", "user.email", "test@test.com"]);
+        git(dir, &["config", "user.name", "Test"]);
     }
 
     pub fn git_add_commit(dir: &Path, msg: &str) {
-        Command::new("git")
-            .args(["add", "."])
-            .current_dir(dir)
-            .output()
-            .unwrap();
-        Command::new("git")
-            .args(["commit", "-m", msg])
-            .current_dir(dir)
-            .output()
-            .unwrap();
+        git(dir, &["add", "."]);
+        git(dir, &["commit", "-m", msg]);
     }
 }

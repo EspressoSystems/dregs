@@ -69,31 +69,31 @@ fn copy_dir_recursive(src: &Path, dst: &Path) -> std::io::Result<()> {
     Ok(())
 }
 
+fn git(dir: &Path, args: &[&str]) -> process::Output {
+    let output = process::Command::new("git")
+        .args(args)
+        .current_dir(dir)
+        .env("GIT_CONFIG_NOSYSTEM", "1")
+        .env("GIT_CONFIG_GLOBAL", "/dev/null")
+        .output()
+        .unwrap();
+    assert!(
+        output.status.success(),
+        "git {args:?} failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    output
+}
+
 pub fn init_git_repo(dir: &Path) {
-    for args in [
-        vec!["init"],
-        vec!["config", "user.email", "test@test.com"],
-        vec!["config", "user.name", "Test"],
-    ] {
-        process::Command::new("git")
-            .args(&args)
-            .current_dir(dir)
-            .output()
-            .unwrap();
-    }
+    git(dir, &["init"]);
+    git(dir, &["config", "user.email", "test@test.com"]);
+    git(dir, &["config", "user.name", "Test"]);
 }
 
 pub fn git_add_commit(dir: &Path, msg: &str) {
-    process::Command::new("git")
-        .args(["add", "."])
-        .current_dir(dir)
-        .output()
-        .unwrap();
-    process::Command::new("git")
-        .args(["commit", "-m", msg])
-        .current_dir(dir)
-        .output()
-        .unwrap();
+    git(dir, &["add", "."]);
+    git(dir, &["commit", "-m", msg]);
 }
 
 #[cfg(test)]

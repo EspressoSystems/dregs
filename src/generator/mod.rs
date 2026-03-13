@@ -3,51 +3,51 @@ use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use thiserror::Error;
 
-pub mod gambit;
+pub(crate) mod gambit;
 
 #[derive(Error, Debug)]
-pub enum GeneratorError {
+pub(crate) enum GeneratorError {
     #[error("failed to generate mutants: {0}")]
     Generation(String),
     #[error("io error: {0}")]
     Io(#[from] std::io::Error),
 }
 
-pub type Result<T> = std::result::Result<T, GeneratorError>;
+pub(crate) type Result<T> = std::result::Result<T, GeneratorError>;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct Mutant {
-    pub id: u32,
-    pub source_path: PathBuf,
-    pub relative_source_path: PathBuf,
-    pub mutant_path: PathBuf,
-    pub operator: String,
-    pub original: String,
-    pub replacement: String,
-    pub line: u32,
+pub(crate) struct Mutant {
+    pub(crate) id: u32,
+    pub(crate) source_path: PathBuf,
+    pub(crate) relative_source_path: PathBuf,
+    pub(crate) mutant_path: PathBuf,
+    pub(crate) operator: String,
+    pub(crate) original: String,
+    pub(crate) replacement: String,
+    pub(crate) line: u32,
     #[serde(default)]
-    pub forge_args: Vec<String>,
+    pub(crate) forge_args: Vec<String>,
 }
 
 #[derive(Debug, Clone)]
-pub struct FileTarget {
-    pub file: PathBuf,
-    pub contracts: Vec<String>,
-    pub functions: Vec<String>,
-    pub forge_args: Vec<String>,
+pub(crate) struct FileTarget {
+    pub(crate) file: PathBuf,
+    pub(crate) contracts: Vec<String>,
+    pub(crate) functions: Vec<String>,
+    pub(crate) forge_args: Vec<String>,
 }
 
 #[derive(Debug, Clone)]
-pub struct GeneratorConfig {
-    pub project_root: PathBuf,
-    pub targets: Vec<FileTarget>,
-    pub operators: Vec<String>,
-    pub output_dir: PathBuf,
-    pub foundry_config: Option<FoundryConfig>,
-    pub skip_validate: bool,
+pub(crate) struct GeneratorConfig {
+    pub(crate) project_root: PathBuf,
+    pub(crate) targets: Vec<FileTarget>,
+    pub(crate) operators: Vec<String>,
+    pub(crate) output_dir: PathBuf,
+    pub(crate) foundry_config: Option<FoundryConfig>,
+    pub(crate) skip_validate: bool,
 }
 
-pub trait MutationGenerator {
+pub(crate) trait MutationGenerator {
     fn generate(&self, config: &GeneratorConfig) -> Result<Vec<Mutant>>;
 }
 

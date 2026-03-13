@@ -8,7 +8,7 @@ use std::path::{Path, PathBuf};
 use thiserror::Error;
 
 #[derive(Error, Debug)]
-pub enum ReportError {
+pub(crate) enum ReportError {
     #[error("failed to generate report: {0}")]
     Generation(String),
     #[error("io error: {0}")]
@@ -17,23 +17,23 @@ pub enum ReportError {
     Json(#[from] serde_json::Error),
 }
 
-pub type Result<T> = std::result::Result<T, ReportError>;
+pub(crate) type Result<T> = std::result::Result<T, ReportError>;
 
 fn escape_pipe(s: &str) -> String {
     s.replace('|', "\\|")
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Report {
-    pub total_mutants: u32,
-    pub killed_mutants: u32,
-    pub survived_mutants: u32,
-    pub mutation_score: f64,
-    pub results: Vec<TestResult>,
+pub(crate) struct Report {
+    pub(crate) total_mutants: u32,
+    pub(crate) killed_mutants: u32,
+    pub(crate) survived_mutants: u32,
+    pub(crate) mutation_score: f64,
+    pub(crate) results: Vec<TestResult>,
 }
 
 impl Report {
-    pub fn new(results: Vec<TestResult>) -> Self {
+    pub(crate) fn new(results: Vec<TestResult>) -> Self {
         let total = results.len() as u32;
         let killed = results.iter().filter(|r| r.killed).count() as u32;
         let survived = total - killed;
@@ -53,7 +53,7 @@ impl Report {
     }
 
     /// Merge multiple partial result files into combined results.
-    pub fn merge(result_files: &[PathBuf]) -> Result<Vec<TestResult>> {
+    pub(crate) fn merge(result_files: &[PathBuf]) -> Result<Vec<TestResult>> {
         if result_files.is_empty() {
             return Err(ReportError::Generation(
                 "no result files provided".to_string(),
@@ -84,12 +84,16 @@ impl Report {
         Ok(all_results)
     }
 
-    pub fn print_summary(&self, mutants: &[Mutant]) {
+    pub(crate) fn print_summary(&self, mutants: &[Mutant]) {
         self.write_summary(&mut std::io::stdout(), mutants)
             .expect("failed to write summary to stdout");
     }
 
-    pub fn write_summary(&self, w: &mut impl Write, mutants: &[Mutant]) -> std::io::Result<()> {
+    pub(crate) fn write_summary(
+        &self,
+        w: &mut impl Write,
+        mutants: &[Mutant],
+    ) -> std::io::Result<()> {
         let mutant_map: HashMap<u32, &Mutant> = mutants.iter().map(|m| (m.id, m)).collect();
 
         for result in &self.results {
@@ -152,12 +156,12 @@ impl Report {
         Ok(())
     }
 
-    pub fn print_summary_markdown(&self, mutants: &[Mutant]) {
+    pub(crate) fn print_summary_markdown(&self, mutants: &[Mutant]) {
         self.write_summary_markdown(&mut std::io::stdout(), mutants)
             .expect("failed to write markdown summary to stdout");
     }
 
-    pub fn write_summary_markdown(
+    pub(crate) fn write_summary_markdown(
         &self,
         w: &mut impl Write,
         mutants: &[Mutant],
@@ -225,7 +229,7 @@ impl Report {
         Ok(())
     }
 
-    pub fn write_json(&self, path: &Path) -> Result<()> {
+    pub(crate) fn write_json(&self, path: &Path) -> Result<()> {
         let json = serde_json::to_string_pretty(self)?;
         fs::write(path, json)?;
         Ok(())
