@@ -396,15 +396,12 @@ fn resolve_diff_ranges(
 
 fn apply_diff_target_filter(
     targets: Vec<FileTarget>,
-    diff_ranges: Option<&[DiffRange]>,
+    diff_ranges: &[DiffRange],
     project_root: &Path,
-) -> (Vec<FileTarget>, Option<Vec<DiffRange>>) {
-    let Some(diff_ranges) = diff_ranges else {
-        return (targets, None);
-    };
+) -> Vec<FileTarget> {
     if diff_ranges.is_empty() {
         eprintln!("No Solidity files changed in diff");
-        return (vec![], Some(diff_ranges.to_vec()));
+        return vec![];
     }
     let filtered = filter_targets_by_diff(targets, diff_ranges, project_root);
     if filtered.is_empty() {
@@ -415,7 +412,7 @@ fn apply_diff_target_filter(
             filtered.len()
         );
     }
-    (filtered, Some(diff_ranges.to_vec()))
+    filtered
 }
 
 fn apply_diff_mutant_filter(
@@ -590,8 +587,11 @@ fn run_mutation_testing(
     let targets = resolve_targets(dregs_config, files, forge_args, &project_root)?;
     let diff_ranges =
         resolve_diff_ranges(diff_base.as_deref(), diff_file.as_deref(), &project_root)?;
-    let (targets, diff_ranges) =
-        apply_diff_target_filter(targets, diff_ranges.as_deref(), &project_root);
+    let targets = if let Some(ranges) = &diff_ranges {
+        apply_diff_target_filter(targets, ranges, &project_root)
+    } else {
+        targets
+    };
     if targets.is_empty() {
         println!("Mutation score: 100.0% (0 mutants)");
         return Ok(());
@@ -668,8 +668,11 @@ fn cmd_generate(
     let targets = resolve_targets(dregs_config, files, &[], &project_root)?;
     let diff_ranges =
         resolve_diff_ranges(diff_base.as_deref(), diff_file.as_deref(), &project_root)?;
-    let (targets, diff_ranges) =
-        apply_diff_target_filter(targets, diff_ranges.as_deref(), &project_root);
+    let targets = if let Some(ranges) = &diff_ranges {
+        apply_diff_target_filter(targets, ranges, &project_root)
+    } else {
+        targets
+    };
     if targets.is_empty() {
         println!("No mutants generated");
         return Ok(());
@@ -1177,19 +1180,6 @@ mod tests {
     }
 
     #[test]
-    fn test_apply_diff_target_filter_none() {
-        let targets = vec![FileTarget {
-            file: PathBuf::from("src/A.sol"),
-            contracts: vec![],
-            functions: vec![],
-            forge_args: vec![],
-        }];
-        let (filtered, ranges) = apply_diff_target_filter(targets, None, Path::new(""));
-        assert_eq!(filtered.len(), 1);
-        assert!(ranges.is_none());
-    }
-
-    #[test]
     fn test_apply_diff_target_filter_with_diff() {
         let targets = vec![
             FileTarget {
@@ -1209,10 +1199,8 @@ mod tests {
             file: PathBuf::from("src/A.sol"),
             lines: vec![1..5],
         }];
-        let (filtered, ranges) =
-            apply_diff_target_filter(targets, Some(&diff_ranges), Path::new("/project"));
+        let filtered = apply_diff_target_filter(targets, &diff_ranges, Path::new("/project"));
         assert_eq!(filtered.len(), 1);
-        assert!(ranges.is_some());
         assert!(filtered[0].file.to_string_lossy().contains("src/A.sol"));
     }
 
@@ -1225,10 +1213,8 @@ mod tests {
             forge_args: vec![],
         }];
         let diff_ranges: Vec<DiffRange> = vec![];
-        let (filtered, ranges) =
-            apply_diff_target_filter(targets, Some(&diff_ranges), Path::new(""));
+        let filtered = apply_diff_target_filter(targets, &diff_ranges, Path::new(""));
         assert!(filtered.is_empty());
-        assert!(ranges.is_some());
     }
 
     #[test]
@@ -1243,10 +1229,8 @@ mod tests {
             file: PathBuf::from("src/A.sol"),
             lines: vec![1..5],
         }];
-        let (filtered, ranges) =
-            apply_diff_target_filter(targets, Some(&diff_ranges), Path::new("/project"));
+        let filtered = apply_diff_target_filter(targets, &diff_ranges, Path::new("/project"));
         assert!(filtered.is_empty());
-        assert!(ranges.is_some());
     }
 
     #[test]
