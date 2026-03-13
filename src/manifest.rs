@@ -5,7 +5,7 @@ use std::path::{Path, PathBuf};
 use thiserror::Error;
 
 #[derive(Error, Debug)]
-pub enum ManifestError {
+pub(crate) enum ManifestError {
     #[error("io error: {0}")]
     Io(#[from] std::io::Error),
     #[error("json error: {0}")]
@@ -14,18 +14,18 @@ pub enum ManifestError {
     MissingMutantFile(PathBuf),
 }
 
-pub type Result<T> = std::result::Result<T, ManifestError>;
+pub(crate) type Result<T> = std::result::Result<T, ManifestError>;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Manifest {
-    pub version: u32,
-    pub mutants: Vec<Mutant>,
+pub(crate) struct Manifest {
+    pub(crate) version: u32,
+    pub(crate) mutants: Vec<Mutant>,
 }
 
 impl Manifest {
     /// Write manifest and copy mutant files to output directory.
     /// Paths in manifest are stored relative to the output directory.
-    pub fn write(output_dir: &Path, mutants: Vec<Mutant>) -> Result<Self> {
+    pub(crate) fn write(output_dir: &Path, mutants: Vec<Mutant>) -> Result<Self> {
         fs::create_dir_all(output_dir)?;
 
         let mut manifest_mutants = Vec::new();
@@ -62,7 +62,7 @@ impl Manifest {
     }
 
     /// Read manifest from file and resolve mutant_path relative to manifest's parent dir.
-    pub fn read(path: &Path) -> Result<Self> {
+    pub(crate) fn read(path: &Path) -> Result<Self> {
         let content = fs::read_to_string(path)?;
         let mut manifest: Manifest = serde_json::from_str(&content)?;
 

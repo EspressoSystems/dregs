@@ -4,30 +4,30 @@ test *args:
 
 # Run coverage and show summary
 cov *args:
-    cargo llvm-cov {{args}}
+    cargo llvm-cov nextest {{args}}
 
 # Run coverage and open HTML report
 cov-html *args:
-    cargo llvm-cov --html --open {{args}}
+    cargo llvm-cov nextest --html --open {{args}}
 
 # Check coverage meets thresholds (99% lines, 97% regions, 97% functions)
 cov-check *args:
-    cargo llvm-cov --fail-under-lines 99 --fail-under-regions 97 --fail-under-functions 97 {{args}}
+    cargo llvm-cov nextest --fail-under-lines 99 --fail-under-regions 97 --fail-under-functions 97 {{args}}
 
 # Show summary with uncovered lines listed per file
 cov-uncovered *args:
-    cargo llvm-cov --show-missing-lines {{args}}
+    cargo llvm-cov nextest --show-missing-lines {{args}}
 
 # Show annotated source with hit counts per line
 cov-text *args:
-    cargo llvm-cov --text {{args}}
+    cargo llvm-cov nextest --text {{args}}
 
 # Show uncovered regions from JSON coverage data
 cov-regions *args:
     #!/usr/bin/env python3
     import json, subprocess, sys
     out = subprocess.run(
-        ["cargo", "llvm-cov", "--json"] + "{{args}}".split(),
+        ["cargo", "llvm-cov", "nextest", "--json"] + "{{args}}".split(),
         stdout=subprocess.PIPE, text=True
     )
     if out.returncode != 0:
@@ -44,7 +44,7 @@ cov-functions *args:
     import json, subprocess, sys
     src_prefix = "{{justfile_directory()}}/src/"
     out = subprocess.run(
-        ["cargo", "llvm-cov", "--json"] + "{{args}}".split(),
+        ["cargo", "llvm-cov", "nextest", "--json"] + "{{args}}".split(),
         stdout=subprocess.PIPE, text=True
     )
     if out.returncode != 0:

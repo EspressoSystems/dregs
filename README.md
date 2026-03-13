@@ -1,6 +1,8 @@
 # dregs
 
 > **WIP** - Mutation testing for Solidity projects using Foundry.
+>
+> Binary crate only. No public Rust API.
 
 Generates mutants with [Gambit](https://github.com/Certora/gambit), runs
 `forge test` against each, and reports which mutants survived.
@@ -72,6 +74,14 @@ dregs run --project . --diff-base HEAD~1
 ```
 
 Uses merge-base semantics (`git diff main...HEAD`), so on a PR branch this covers exactly the changes introduced by the branch.
+
+Alternatively, provide a pre-computed unified diff via file or stdin:
+
+```bash
+git diff main...HEAD -- '*.sol' > changes.diff
+dregs run --project . --diff-file changes.diff
+git diff main...HEAD -- '*.sol' | dregs run --project . --diff-file -
+```
 
 ### Sharding (generate once, test in parallel jobs)
 

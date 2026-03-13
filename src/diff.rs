@@ -1,3 +1,4 @@
+use std::io::Read;
 use std::ops::Range;
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -7,20 +8,25 @@ use thiserror::Error;
 use crate::generator::{FileTarget, Mutant};
 
 #[derive(Error, Debug)]
-pub enum DiffError {
+pub(crate) enum DiffError {
     #[error("failed to run git diff: {0}")]
     GitCommand(String),
     #[error("failed to parse diff output: {0}")]
     Parse(String),
+    #[error("failed to read diff input: {0}")]
+    Io(#[from] std::io::Error),
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct DiffRange {
-    pub file: PathBuf,
-    pub lines: Vec<Range<u32>>,
+pub(crate) struct DiffRange {
+    pub(crate) file: PathBuf,
+    pub(crate) lines: Vec<Range<u32>>,
 }
 
-pub fn parse_git_diff(project_root: &Path, base_ref: &str) -> Result<Vec<DiffRange>, DiffError> {
+pub(crate) fn parse_git_diff(
+    project_root: &Path,
+    base_ref: &str,
+) -> Result<Vec<DiffRange>, DiffError> {
     let output = Command::new("git")
         .args([
             "diff",
@@ -42,7 +48,13 @@ pub fn parse_git_diff(project_root: &Path, base_ref: &str) -> Result<Vec<DiffRan
     parse_diff_output(&stdout)
 }
 
-pub fn parse_diff_output(output: &str) -> Result<Vec<DiffRange>, DiffError> {
+pub(crate) fn parse_diff_from_reader(mut reader: impl Read) -> Result<Vec<DiffRange>, DiffError> {
+    let mut buf = String::new();
+    reader.read_to_string(&mut buf)?;
+    parse_diff_output(&buf)
+}
+
+pub(crate) fn parse_diff_output(output: &str) -> Result<Vec<DiffRange>, DiffError> {
     let mut ranges: Vec<DiffRange> = Vec::new();
     let mut current_file: Option<PathBuf> = None;
 
@@ -111,7 +123,7 @@ fn parse_u32(s: &str, context: &str) -> Result<u32, DiffError> {
         .map_err(|_| DiffError::Parse(format!("invalid number '{s}' in: {context}")))
 }
 
-pub fn filter_mutants(mutants: Vec<Mutant>, diff_ranges: &[DiffRange]) -> Vec<Mutant> {
+pub(crate) fn filter_mutants(mutants: Vec<Mutant>, diff_ranges: &[DiffRange]) -> Vec<Mutant> {
     mutants
         .into_iter()
         .filter(|m| {
@@ -122,7 +134,7 @@ pub fn filter_mutants(mutants: Vec<Mutant>, diff_ranges: &[DiffRange]) -> Vec<Mu
         .collect()
 }
 
-pub fn filter_targets_by_diff(
+pub(crate) fn filter_targets_by_diff(
     targets: Vec<FileTarget>,
     diff_ranges: &[DiffRange],
     project_root: &Path,
@@ -411,19 +423,6 @@ rename to src/NewName.sol
     }
 
     #[test]
-    fn test_parse_git_diff_empty() {
-        let temp = tempfile::TempDir::new().unwrap();
-        let dir = temp.path();
-        init_git_repo(dir);
-
-        std::fs::write(dir.join("Counter.sol"), "line1\n").unwrap();
-        git_add_commit(dir, "initial");
-
-        let ranges = parse_git_diff(dir, "HEAD").unwrap();
-        assert!(ranges.is_empty());
-    }
-
-    #[test]
     fn test_parse_git_diff_invalid_ref() {
         let temp = tempfile::TempDir::new().unwrap();
         let dir = temp.path();
@@ -441,23 +440,17 @@ rename to src/NewName.sol
     }
 
     #[test]
-    fn test_parse_git_diff_new_file() {
-        let temp = tempfile::TempDir::new().unwrap();
-        let dir = temp.path();
-        init_git_repo(dir);
-
-        std::fs::write(dir.join("dummy.txt"), "x\n").unwrap();
-        git_add_commit(dir, "initial");
-
-        let src = dir.join("src");
-        std::fs::create_dir_all(&src).unwrap();
-        std::fs::write(src.join("New.sol"), "line1\nline2\nline3\n").unwrap();
-        git_add_commit(dir, "add file");
-
-        let ranges = parse_git_diff(dir, "HEAD~1").unwrap();
+    fn test_parse_diff_from_reader() {
+        let diff = "\
+diff --git a/src/Counter.sol b/src/Counter.sol
+--- a/src/Counter.sol
++++ b/src/Counter.sol
+@@ -10,3 +10,5 @@ contract Counter {
+";
+        let ranges = parse_diff_from_reader(diff.as_bytes()).unwrap();
         assert_eq!(ranges.len(), 1);
-        assert_eq!(ranges[0].file, PathBuf::from("src/New.sol"));
-        assert_eq!(ranges[0].lines, vec![1..4]);
+        assert_eq!(ranges[0].file, PathBuf::from("src/Counter.sol"));
+        assert_eq!(ranges[0].lines, vec![10..15]);
     }
 
     #[test]

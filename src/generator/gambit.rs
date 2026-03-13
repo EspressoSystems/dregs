@@ -4,10 +4,10 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 
 #[derive(Default)]
-pub struct GambitGenerator;
+pub(crate) struct GambitGenerator;
 
 impl GambitGenerator {
-    pub fn new() -> Self {
+    pub(crate) fn new() -> Self {
         Self
     }
 }

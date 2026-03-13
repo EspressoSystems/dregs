@@ -2,7 +2,7 @@ use std::str::FromStr;
 use thiserror::Error;
 
 #[derive(Error, Debug)]
-pub enum PartitionError {
+pub(crate) enum PartitionError {
     #[error("invalid partition format: {0} (expected 'slice:M/N')")]
     InvalidFormat(String),
     #[error("partition index must be >= 1, got {0}")]
@@ -13,18 +13,18 @@ pub enum PartitionError {
     TotalTooLow(u32),
 }
 
-pub type Result<T> = std::result::Result<T, PartitionError>;
+pub(crate) type Result<T> = std::result::Result<T, PartitionError>;
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct Partition {
-    pub index: u32, // 1-based
-    pub total: u32,
+pub(crate) struct Partition {
+    pub(crate) index: u32, // 1-based
+    pub(crate) total: u32,
 }
 
 impl Partition {
     /// Filter items by round-robin assignment: item at position i (0-based)
     /// belongs to partition (i % total) + 1
-    pub fn filter<'a, T, F>(&self, items: &'a [T], id_fn: F) -> Vec<&'a T>
+    pub(crate) fn filter<'a, T, F>(&self, items: &'a [T], id_fn: F) -> Vec<&'a T>
     where
         F: Fn(&T) -> u32,
     {

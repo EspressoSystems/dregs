@@ -117,6 +117,7 @@ src/
 
 ## Design Decisions
 
+- **Binary crate, no public API**: only `Cli` and `run` are re-exported from lib.rs for main.rs; all modules are private. Don't mark items `pub` unless they're used from another module.
 - **Generator trait**: abstract mutation source for future flexibility
 - **Gambit as library**: use gambit crate directly via `run_mutate()` API
 - **Forge as subprocess**: forge internals not designed for library use
