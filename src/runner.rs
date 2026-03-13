@@ -9,7 +9,7 @@ use thiserror::Error;
 
 #[derive(Error, Debug)]
 pub(crate) enum RunnerError {
-    #[error("failed to run tests: {0}")]
+    #[error("{0}")]
     TestExecution(String),
     #[error("io error: {0}")]
     Io(#[from] std::io::Error),
@@ -25,7 +25,6 @@ pub(crate) type Result<T> = std::result::Result<T, RunnerError>;
 pub(crate) struct ForgeTestResult {
     pub(crate) failed: bool,
     pub(crate) killed_by: Option<String>,
-    pub(crate) stderr: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -132,7 +131,6 @@ pub(crate) fn run_forge_test(
         return Ok(ForgeTestResult {
             failed: false,
             killed_by: None,
-            stderr,
         });
     }
 
@@ -152,11 +150,34 @@ pub(crate) fn run_forge_test(
     Ok(ForgeTestResult {
         failed: true,
         killed_by,
-        stderr,
     })
 }
 
+pub(crate) fn run_forge_test_baseline(project_root: &Path, extra_args: &[String]) -> Result<()> {
+    eprintln!("Running: forge test {}", extra_args.join(" "));
+    let output = Command::new("forge")
+        .arg("test")
+        .args(extra_args)
+        .current_dir(project_root)
+        .output()?;
+
+    if output.status.success() {
+        return Ok(());
+    }
+
+    let stdout = String::from_utf8_lossy(&output.stdout).into_owned();
+    let stderr = String::from_utf8_lossy(&output.stderr).into_owned();
+
+    let combined = [stdout, stderr]
+        .into_iter()
+        .filter(|s| !s.is_empty())
+        .collect::<Vec<_>>()
+        .join("\n");
+    Err(RunnerError::TestExecution(combined))
+}
+
 pub(crate) fn list_forge_tests(project_root: &Path, extra_args: &[String]) -> Result<Vec<String>> {
+    eprintln!("Running: forge test --json --list {}", extra_args.join(" "));
     let output = Command::new("forge")
         .arg("test")
         .arg("--json")
@@ -306,7 +327,7 @@ mod tests {
     #[test]
     fn test_runner_error_display() {
         let err = RunnerError::TestExecution("forge failed".to_string());
-        assert_eq!(err.to_string(), "failed to run tests: forge failed");
+        assert_eq!(err.to_string(), "forge failed");
     }
 
     #[test]
@@ -575,6 +596,35 @@ contract FailTest {
 
         let result = run_forge_test(project.path(), &[]).unwrap();
         assert!(result.failed);
+    }
+
+    #[test]
+    fn test_run_forge_test_failing_captures_stdout() {
+        let (_temp, project_root) = crate::test_utils::fixture_to_temp("simple");
+
+        // Add a failing test to the working fixture
+        let fail_test = project_root.join("test/Fail.t.sol");
+        fs::write(
+            &fail_test,
+            r#"// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.30;
+import "../src/Counter.sol";
+contract FailTest {
+    function test_alwaysFails() public pure {
+        assert(false);
+    }
+}
+"#,
+        )
+        .unwrap();
+
+        let err = run_forge_test_baseline(&project_root, &[]).unwrap_err();
+        let msg = err.to_string();
+        assert!(
+            msg.contains("test_alwaysFails"),
+            "error should contain the failing test name, got: {}",
+            msg
+        );
     }
 
     #[test]

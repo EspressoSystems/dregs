@@ -18,7 +18,7 @@ use crate::generator::{FileTarget, GeneratorConfig, Mutant, MutationGenerator};
 use crate::manifest::Manifest;
 use crate::partition::Partition;
 use crate::report::Report;
-use crate::runner::{TestResult, list_forge_tests, run_forge_test, run_mutant};
+use crate::runner::{TestResult, list_forge_tests, run_forge_test_baseline, run_mutant};
 
 pub(crate) fn parse_workers(s: &str) -> std::result::Result<usize, String> {
     let n: usize = s.parse().map_err(|e| format!("{e}"))?;
@@ -519,6 +519,24 @@ fn run_mutants_parallel(
     Ok(results)
 }
 
+fn baseline_forge_arg_sets(
+    dregs_config: Option<&DregsConfig>,
+    cli_forge_args: &[String],
+) -> Vec<Vec<String>> {
+    let Some(config) = dregs_config else {
+        return vec![cli_forge_args.to_vec()];
+    };
+    let mut seen = std::collections::HashSet::new();
+    let mut result = Vec::new();
+    for target in &config.targets {
+        let args = target.forge_args.clone().unwrap_or_default();
+        if seen.insert(args.clone()) {
+            result.push(args);
+        }
+    }
+    result
+}
+
 fn run_baseline_tests(project_root: &Path, forge_args: &[String]) -> Result<()> {
     if !forge_args.is_empty() {
         let test_names =
@@ -534,10 +552,8 @@ fn run_baseline_tests(project_root: &Path, forge_args: &[String]) -> Result<()> 
 
     eprintln!("Running baseline tests...");
     let baseline_start = Instant::now();
-    let result =
-        run_forge_test(project_root, forge_args).context("failed to run baseline tests")?;
-    if result.failed {
-        eprint!("{}", result.stderr);
+    if let Err(e) = run_forge_test_baseline(project_root, forge_args) {
+        eprintln!("{}", e);
         anyhow::bail!("baseline tests failed - fix tests before running mutation testing");
     }
     eprintln!(
@@ -565,6 +581,12 @@ fn run_mutation_testing(
     let project_root = resolve_project_root(&files, &project)?;
     let foundry_config =
         parse_foundry_toml(&project_root).context("failed to parse foundry.toml")?;
+    if foundry_config.is_some() {
+        eprintln!(
+            "Using foundry.toml: {}",
+            project_root.join("foundry.toml").display()
+        );
+    }
     let foundry_config = foundry_config.map(|mut fc| {
         if fc.remappings.is_empty() {
             fc.remappings = resolve_remappings(&project_root);
@@ -574,15 +596,16 @@ fn run_mutation_testing(
 
     let dregs_config =
         parse_dregs_toml(&project_root, config.as_deref()).context("failed to parse dregs.toml")?;
+    if dregs_config.is_some() {
+        let default_path = project_root.join("dregs.toml");
+        let dregs_path = config.as_deref().unwrap_or(&default_path);
+        eprintln!("Using dregs.toml: {}", dregs_path.display());
+    }
 
-    // When dregs.toml defines targets, each has its own forge_args, so baseline runs unfiltered.
-    // When using CLI forge_args, baseline validates that matching tests exist.
-    let baseline_forge_args: &[String] = if dregs_config.is_some() {
-        &[]
-    } else {
-        forge_args
-    };
-    run_baseline_tests(&project_root, baseline_forge_args)?;
+    let baseline_arg_sets = baseline_forge_arg_sets(dregs_config.as_ref(), forge_args);
+    for args in &baseline_arg_sets {
+        run_baseline_tests(&project_root, args)?;
+    }
 
     let targets = resolve_targets(dregs_config, files, forge_args, &project_root)?;
     let diff_ranges =
@@ -614,7 +637,11 @@ fn run_mutation_testing(
         return Ok(());
     }
 
-    eprintln!("Generated {} mutants", mutants.len());
+    eprintln!(
+        "Testing {} mutants with {} workers...",
+        mutants.len(),
+        workers
+    );
 
     let results = run_mutants_parallel(&mutants, &project_root, workers)?;
 
@@ -656,6 +683,12 @@ fn cmd_generate(
     let project_root = resolve_project_root(&files, &project)?;
     let foundry_config =
         parse_foundry_toml(&project_root).context("failed to parse foundry.toml")?;
+    if foundry_config.is_some() {
+        eprintln!(
+            "Using foundry.toml: {}",
+            project_root.join("foundry.toml").display()
+        );
+    }
     let foundry_config = foundry_config.map(|mut fc| {
         if fc.remappings.is_empty() {
             fc.remappings = resolve_remappings(&project_root);
@@ -665,6 +698,11 @@ fn cmd_generate(
 
     let dregs_config =
         parse_dregs_toml(&project_root, config.as_deref()).context("failed to parse dregs.toml")?;
+    if dregs_config.is_some() {
+        let default_path = project_root.join("dregs.toml");
+        let dregs_path = config.as_deref().unwrap_or(&default_path);
+        eprintln!("Using dregs.toml: {}", dregs_path.display());
+    }
     let targets = resolve_targets(dregs_config, files, &[], &project_root)?;
     let diff_ranges =
         resolve_diff_ranges(diff_base.as_deref(), diff_file.as_deref(), &project_root)?;
@@ -712,6 +750,7 @@ fn cmd_test(
 
     let manifest = Manifest::read(&manifest_path).context("failed to read manifest")?;
 
+    // cmd_test doesn't load dregs.toml, so baseline runs with CLI forge_args only
     run_baseline_tests(&project_root, forge_args)?;
 
     let mutants_to_test: Vec<&Mutant> = if let Some(partition_str) = &partition {
@@ -1365,5 +1404,89 @@ diff --git a/src/Counter.sol b/src/Counter.sol
         }]);
         let result = apply_diff_mutant_filter(mutants, ranges.as_deref());
         assert!(result.is_empty());
+    }
+
+    #[test]
+    fn test_baseline_forge_arg_sets_no_config() {
+        let args = vec!["--match-test".to_string(), "Foo".to_string()];
+        let result = baseline_forge_arg_sets(None, &args);
+        assert_eq!(result, vec![args]);
+    }
+
+    #[test]
+    fn test_baseline_forge_arg_sets_no_config_empty() {
+        let result = baseline_forge_arg_sets(None, &[]);
+        assert_eq!(result, vec![Vec::<String>::new()]);
+    }
+
+    #[test]
+    fn test_baseline_forge_arg_sets_from_dregs_config() {
+        use crate::config::{DregsConfig, TargetConfig};
+
+        let config = DregsConfig {
+            targets: vec![
+                TargetConfig {
+                    files: vec!["src/A.sol".to_string()],
+                    contracts: None,
+                    functions: None,
+                    forge_args: Some(vec!["--match-contract".to_string(), "ATest".to_string()]),
+                },
+                TargetConfig {
+                    files: vec!["src/B.sol".to_string()],
+                    contracts: None,
+                    functions: None,
+                    forge_args: Some(vec!["--match-contract".to_string(), "BTest".to_string()]),
+                },
+            ],
+        };
+
+        let result = baseline_forge_arg_sets(Some(&config), &[]);
+        assert_eq!(result.len(), 2);
+        assert_eq!(result[0], vec!["--match-contract", "ATest"]);
+        assert_eq!(result[1], vec!["--match-contract", "BTest"]);
+    }
+
+    #[test]
+    fn test_baseline_forge_arg_sets_deduplicates() {
+        use crate::config::{DregsConfig, TargetConfig};
+
+        let args = vec!["--match-contract".to_string(), "ATest".to_string()];
+        let config = DregsConfig {
+            targets: vec![
+                TargetConfig {
+                    files: vec!["src/A.sol".to_string()],
+                    contracts: None,
+                    functions: None,
+                    forge_args: Some(args.clone()),
+                },
+                TargetConfig {
+                    files: vec!["src/B.sol".to_string()],
+                    contracts: None,
+                    functions: None,
+                    forge_args: Some(args),
+                },
+            ],
+        };
+
+        let result = baseline_forge_arg_sets(Some(&config), &[]);
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0], vec!["--match-contract", "ATest"]);
+    }
+
+    #[test]
+    fn test_baseline_forge_arg_sets_none_treated_as_empty() {
+        use crate::config::{DregsConfig, TargetConfig};
+
+        let config = DregsConfig {
+            targets: vec![TargetConfig {
+                files: vec!["src/A.sol".to_string()],
+                contracts: None,
+                functions: None,
+                forge_args: None,
+            }],
+        };
+
+        let result = baseline_forge_arg_sets(Some(&config), &[]);
+        assert_eq!(result, vec![Vec::<String>::new()]);
     }
 }
