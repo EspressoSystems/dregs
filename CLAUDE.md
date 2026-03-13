@@ -1,207 +1,125 @@
 # dregs - Solidity Mutation Testing Runner
 
-## Overview
-
 A Rust CLI tool that runs mutation testing for Solidity projects using Foundry. Uses Gambit for mutation generation with an abstraction layer for future generator support.
 
-## Roadmap
+## Features
 
-### Core Mutation Testing (Complete)
+Subcommands:
 
-- [x] Project setup (flake.nix, Cargo.toml)
-- [x] Gambit library integration
-- [x] Test runner with temp workspace per mutant
-- [x] Report mutation score + surviving mutants + which test killed
-- [x] Wire up CLI to run full mutation testing flow
+- `run` - all-in-one generate + test + report
+- `generate` - write mutant manifest
+- `test` - run tests from manifest
+- `report` - merge partial results
 
-### Nix Package with Crane (Complete)
+Key flags (see `dregs <subcommand> --help` for all):
 
-- [x] Add crane input to flake.nix
-- [x] Build dregs with craneLib.buildPackage
-- [x] Wrap binary to include forge in PATH
-- [x] Export packages.default and apps.default
-- [x] Usage: `nix run github:sveitser/dregs -- run --project .`
+- `--workers N` - parallel execution (run)
+- `--diff-base REF` - only changed lines from git (run, generate)
+- `--diff-file PATH` - only changed lines from file, `-` for stdin (run, generate)
+- `--fail-under SCORE` - score threshold (run, report)
+- `--partition slice:M/N` - CI sharding (test)
+- `--mutations OPS` - comma-separated mutation operators (run, generate)
+- `--timeout SECS` - per mutant (run)
+- `--skip-validate` - via_ir workaround (run, test)
+- `--config PATH` - dregs.toml path (run, generate)
+- `-- <forge_args>` - forwarded to forge test (run, test)
 
-### Foundry.toml Configuration (Complete)
+Configuration:
 
-- [x] Parse foundry.toml for project settings
-- [x] Auto-detect project root from file paths
-- [x] Pass optimizer, evm_version, remappings to gambit
-- [x] Resolve remappings via `forge remappings` when not in foundry.toml
-- [x] Add --skip-validate flag (workaround for via_ir projects)
-- [x] Progress output during mutation generation and testing
-- [x] Note: via_ir not supported by gambit upstream
-- [x] Note: gambit expects solc binary path, version strings from foundry.toml are ignored with warning
+- foundry.toml: auto-detected, reads optimizer/evm_version/remappings; remappings resolved via `forge remappings` if absent; solc version strings ignored (requires binary path)
+- dregs.toml: `[[target]]` with files (glob), contracts, functions, forge_args; mutually exclusive with CLI files/forge_args
 
-### Parallel Execution & CI Sharding (Complete)
+Diff filtering (`--diff-base` or `--diff-file`):
 
-- [x] Run multiple mutants concurrently with rayon
-- [x] Configurable `--workers N` flag (default 1)
-- [x] `generate` subcommand: produce manifest directory with mutant files
-- [x] `test` subcommand: read manifest, apply `--partition slice:M/N`, run subset, output partial results
-- [x] `report` subcommand: merge partial result files, print summary, `--fail-under` threshold
-- [x] Manifest format: JSON manifest + mutant files with relative paths
-- [x] Partition: round-robin assignment by mutant ID
-- [x] GitHub Actions CI/CD (lint, test, coverage, mutation test, release)
-- [x] `report --format markdown` for CI step summaries
+- Pre-generation file filter + post-generation line filter
+- `--diff-base`: merge-base semantics (`REF...HEAD`)
+- `--diff-file`: read unified diff from file (`-` for stdin); mutually exclusive with `--diff-base`
+- Clean exit (100% score) when no changes affect targets
 
-### Target Configuration (Complete)
+CI sharding:
 
-- [x] `dregs.toml` config file with `[[target]]` sections
-- [x] Per-target `files`, `contracts`, `functions`, `forge_args`
-- [x] Glob pattern support in target files
-- [x] Conflict detection: error when both dregs.toml and CLI files/forge_args
-- [x] Per-mutant `forge_args` through generate/manifest/test pipeline
-- [x] Contract and function filters passed to gambit
-- [x] `--config` flag to override dregs.toml path
-- [x] Backward compatible: old manifests without forge_args deserialize fine
+- generate -> test (partition slice:M/N, round-robin by mutant ID) -> report (merge + `--format markdown`)
+- Manifest uses relative paths for portability
 
-### Diff-Based Filtering (Complete)
+Execution:
 
-- [x] `--diff-base <ref>` flag on `run` and `generate` subcommands
-- [x] Parse `git diff <ref>...HEAD --unified=0 -- '*.sol'` for changed lines
-- [x] Pre-generation: filter target files to only those in the diff
-- [x] Post-generation: filter mutants to only those on changed lines
-- [x] Clean exit with 100% score when no changes affect targets
+- Fail-fast on first test failure (mutant killed)
+- Baseline test validation before mutation testing
+- Temp workspace per mutant for isolation
+
+## Future Work
 
 ### Incremental Testing
 
-- [ ] Cache test results by mutant hash
-- [ ] Only re-test changed mutants
+- Cache test results by mutant hash
+- Only re-test changed mutants
 
 ### Coverage Filtering
 
-- [ ] Parse forge coverage output
-- [ ] Only mutate lines covered by tests
+- Parse forge coverage output
+- Only mutate lines covered by tests
 
-## Development Environment
+## Development
 
-Use direnv with nix-direnv to automatically load the dev environment.
+- Use direnv with flake.nix to automatically load the dev environment.
+- All (non-crate) dependencies installed via flake.nix
 
-Use the rust-dev agent for Rust implementation tasks.
-
-### Common Commands
-
-- `just fmt` - Format all code (cargo fmt + prettier on tracked files)
-- `just check` - Format, compile check, and lint
-- `just test` - Run tests with nextest
-- `just cov` - Run coverage and show summary
-- `just cov-check` - Check coverage meets thresholds
-- `just cov-html` - Open HTML coverage report
-- `just cov-uncovered` - Show summary with uncovered lines listed per file
-- `just cov-text` - Show annotated source with hit counts per line
-- `just cov-regions` - Show uncovered regions from JSON coverage data
-- `just cov-functions` - Show uncovered functions from JSON coverage data
-- `just example` - Run dregs on the simple fixture
+- `just fmt` - Format (cargo fmt + prettier)
+- `just check` - Format, compile, lint
+- `just test` - Tests (nextest)
+- `just example` - Run dregs on simple fixture
 - `just clean` - Remove generated output
+- `just cov` - Coverage summary
+- `just cov-check` - Check coverage thresholds (used by pre-commit)
+- `just cov-html` - HTML coverage report
+- `just cov-uncovered` - Uncovered lines per file
+- `just cov-text` - Annotated source with hit counts
+- `just cov-regions` - Uncovered regions from JSON data
+- `just cov-functions` - Uncovered functions from JSON data
+
+Coverage commands use `cargo-llvm-cov` (Linux only).
 
 ### Commits
 
-Use semantic commit messages: `type: description`
+Semantic commits, present tense, bullet points. Types: feat, fix, docs, refactor, test, chore.
 
-- Present tense ("add" not "added")
-- Bullet points in body for multiple changes
-- feat: new feature
-- fix: bug fix
-- docs: documentation
-- refactor: code restructuring
-- test: adding tests
-- chore: maintenance
+### Pre-commit Hooks
 
-### Pre-commit Hooks (via git-hooks.nix)
-
-- rustfmt
-- clippy (with -D warnings, runs on rust + toml)
-- cargo nextest run (runs on rust + toml)
-- cargo-llvm-cov (99% line, 97% region, 97% function coverage via `just cov-check`; skipped on Darwin)
-- typos (spell checking)
-- cargo-lock (sync Cargo.lock with Cargo.toml)
-- nixpkgs-fmt (nix formatting)
-
-### Tools in devShell
-
-- Rust stable (via oxalica)
-- cargo-nextest
-- cargo-llvm-cov (Linux only)
-- Foundry (from nixpkgs)
-- just
-- solc 0.8.30 (via EspressoSystems/nix-solc-bin)
-- typos
-- nixpkgs-fmt
+rustfmt, clippy (-D warnings), nextest, cargo-llvm-cov (99% line/97% region/97% function; skipped on Darwin), typos, cargo-lock, nixpkgs-fmt
 
 ## Architecture
 
 ```
-dregs
-├── src/
-│   ├── main.rs           # Thin entry point, delegates to cli::run
-│   ├── lib.rs            # Library root, test utilities
-│   ├── cli.rs            # CLI logic: clap structs, subcommands, orchestration
-│   ├── config.rs         # foundry.toml + dregs.toml parsing, project root detection, remapping resolution
-│   ├── diff.rs           # Git diff parsing, mutant/target filtering by changed lines
-│   ├── generator/
-│   │   ├── mod.rs        # Generator trait, Mutant type, FileTarget
-│   │   └── gambit.rs     # Gambit implementation with contract/function filters
-│   ├── manifest.rs       # Manifest read/write for CI sharding
-│   ├── partition.rs      # Round-robin partition for CI sharding
-│   ├── runner.rs         # Test runner (forge test)
-│   └── report.rs         # Results reporting, merge partial results, --format markdown
-├── .github/
-│   ├── actions/
-│   │   ├── install-solc/ # Composite action: install solc binary
-│   │   └── install-dregs/ # Composite action: install dregs from releases
-│   └── workflows/
-│       ├── lint.yml      # fmt, clippy, typos, prettier
-│       ├── test.yml      # nextest, coverage
-│       ├── mutation-test.yml  # Sharded mutation testing (self-test)
-│       ├── release.yml   # Native multi-arch builds + GitHub release
-│       └── example-mutation-test.yml  # Example sharded workflow for users
-├── Cargo.toml
-├── justfile              # Common dev commands
-└── CLAUDE.md             # Roadmap
+src/
+  main.rs          - entry point, delegates to cli::run
+  lib.rs           - library root, test utilities
+  cli.rs           - clap structs, subcommands, orchestration
+  config.rs        - foundry.toml + dregs.toml parsing, project root, remappings
+  diff.rs          - diff parsing (git/file/reader), mutant/target filtering by changed lines
+  generator/
+    mod.rs         - Generator trait, Mutant type, FileTarget
+    gambit.rs      - Gambit implementation with contract/function filters
+  manifest.rs      - manifest read/write for CI sharding
+  partition.rs     - round-robin partition for CI sharding
+  runner.rs        - test runner (forge test)
+  report.rs        - results reporting, merge partial results, markdown format
+.github/
+  actions/
+    install-solc/  - composite action: install solc
+    install-dregs/ - composite action: install dregs from releases
+  workflows/
+    lint.yml       - fmt, clippy, typos, prettier
+    test.yml       - nextest, coverage
+    mutation-test.yml      - sharded mutation testing (self-test)
+    release.yml            - multi-arch builds + GitHub release
+    example-mutation-test.yml - example sharded workflow for users
 ```
-
-## Dependencies
-
-### Runtime
-
-- clap (derive): CLI parsing
-- gambit (git v1.0.6): Mutation generation library
-- glob: File discovery
-- rayon: Parallel mutant execution
-- serde + serde_json: Config and report serialization
-- tempfile: Temp directory management
-- thiserror: Typed errors for testable error paths
-- toml: foundry.toml + dregs.toml parsing
-- anyhow: Top-level error handling (main.rs only)
-
-### External Tools (must be in PATH)
-
-- forge: Test runner and remapping resolution (via subprocess)
-
-### Dev Dependencies
-
-- assert_cmd: CLI testing
-- assert_fs: Filesystem fixtures
-- predicates: Assertion helpers
-- pretty_assertions: Better test output with assert_matches!
 
 ## Design Decisions
 
-- **Temp workspace per mutant**: Cleaner isolation, enables parallelism
-- **Generator trait**: Abstract mutation source for future flexibility
-- **fail-fast**: Stop test run on first failure (mutant killed)
-- **Gambit as library**: Use gambit crate directly via `run_mutate()` API
-- **Forge as subprocess**: Use `forge test --json` CLI instead of library because:
-  - Forge library internals (`MultiContractRunner`) are not designed for external use
-  - Complex setup (solc config, project paths, compilation) poorly documented
-  - CLI provides stable, versioned interface
-  - JSON output gives same test result data we need
-- **Forge for remappings**: Use `forge remappings --root` to resolve auto-detected remappings from libs directories
-- **thiserror for internal errors**: Typed errors for testable code paths
-- **anyhow at boundaries**: Only use anyhow in main.rs for unhandled errors
-- **rayon for parallelism**: Local thread pool per run, not global, to support configurable worker count
-- **ID-based partitioning**: Round-robin by mutant ID (contiguous 1-based from gambit) for deterministic shard assignment
-- **Manifest with relative paths**: Stored relative to manifest dir, resolved on read for portability across CI runners
-- **Per-mutant forge_args**: Each mutant carries its own forge_args from the target config, enabling different test filters per contract
-- **dregs.toml mutually exclusive with CLI files/forge_args**: Prevents ambiguous configuration; global flags (workers, mutations, etc.) always from CLI
+- **Generator trait**: abstract mutation source for future flexibility
+- **Gambit as library**: use gambit crate directly via `run_mutate()` API
+- **Forge as subprocess**: forge internals not designed for library use
+- **thiserror for internal errors**: typed errors for testable code paths
+- **anyhow at boundaries**: main.rs and cli.rs orchestration only; internal modules use thiserror
+- **Per-mutant forge_args**: each mutant carries forge_args from target config
