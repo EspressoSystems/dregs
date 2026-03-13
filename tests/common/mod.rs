@@ -33,6 +33,17 @@ impl TestRun {
         cmd.arg("run").arg("--project").arg(self.project_path());
         cmd
     }
+
+    #[allow(deprecated)]
+    pub fn dregs_cmd_fast(&self) -> Command {
+        let mut cmd = Command::cargo_bin("dregs").unwrap();
+        cmd.arg("run")
+            .arg("--project")
+            .arg(self.project_path())
+            .arg("--mutations")
+            .arg("delete-expression-mutation");
+        cmd
+    }
 }
 
 fn copy_dir_recursive(src: &Path, dst: &Path) -> std::io::Result<()> {

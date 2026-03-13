@@ -33,7 +33,7 @@ fn test_fixture_exists() {
 fn test_run_simple_project() {
     let test_run = common::TestRun::from_fixture("simple");
     test_run
-        .dregs_cmd()
+        .dregs_cmd_fast()
         .assert()
         .success()
         .stdout(predicate::str::contains("Mutation score"));
@@ -45,7 +45,7 @@ fn test_run_with_explicit_files() {
     let file_path = test_run.project_path().join("src/Counter.sol");
 
     test_run
-        .dregs_cmd()
+        .dregs_cmd_fast()
         .arg(file_path)
         .assert()
         .success()
@@ -59,7 +59,7 @@ fn test_run_with_json_output() {
     let output_path = temp.path().join("report.json");
 
     test_run
-        .dregs_cmd()
+        .dregs_cmd_fast()
         .arg("--output")
         .arg(&output_path)
         .assert()
@@ -77,7 +77,7 @@ fn test_run_with_fail_under_passing() {
     let test_run = common::TestRun::from_fixture("simple");
 
     test_run
-        .dregs_cmd()
+        .dregs_cmd_fast()
         .arg("--fail-under")
         .arg("0.0")
         .assert()
@@ -89,7 +89,7 @@ fn test_run_with_fail_under_failing() {
     let test_run = common::TestRun::from_fixture("simple");
 
     test_run
-        .dregs_cmd()
+        .dregs_cmd_fast()
         .arg("--fail-under")
         .arg("1.0")
         .assert()
@@ -152,7 +152,7 @@ fn test_run_with_invalid_file_path() {
     let test_run = common::TestRun::from_fixture("simple");
 
     test_run
-        .dregs_cmd()
+        .dregs_cmd_fast()
         .arg("nonexistent.sol")
         .assert()
         .failure()
@@ -164,7 +164,7 @@ fn test_discover_files_in_src_directory() {
     let test_run = common::TestRun::from_fixture("simple");
 
     test_run
-        .dregs_cmd()
+        .dregs_cmd_fast()
         .assert()
         .success()
         .stdout(predicate::str::contains("Counter.sol"));
@@ -179,6 +179,8 @@ fn test_run_auto_detect_project_root_from_files() {
     // so resolve_project_root should auto-detect from the file's foundry.toml
     dregs_cmd()
         .arg("run")
+        .arg("--mutations")
+        .arg("delete-expression-mutation")
         .arg(file_path)
         .assert()
         .success()
@@ -232,6 +234,8 @@ fn test_run_auto_detect_same_root_multiple_files() {
     // Pass two files without --project to exercise the multi-file same-root path
     dregs_cmd()
         .arg("run")
+        .arg("--mutations")
+        .arg("delete-expression-mutation")
         .arg(&file1)
         .arg(&file2)
         .assert()
@@ -247,6 +251,8 @@ fn test_run_auto_detect_project_root_from_relative_files() {
     dregs_cmd()
         .current_dir(test_run.project_path())
         .arg("run")
+        .arg("--mutations")
+        .arg("delete-expression-mutation")
         .arg("src/Counter.sol")
         .assert()
         .success()
@@ -315,7 +321,7 @@ fn test_run_with_forge_args_shows_matched_tests() {
     let test_run = common::TestRun::from_fixture("simple");
 
     test_run
-        .dregs_cmd()
+        .dregs_cmd_fast()
         .arg("--")
         .arg("--match-test")
         .arg("Increment")
@@ -330,7 +336,7 @@ fn test_run_with_forge_args_no_match_fails() {
     let test_run = common::TestRun::from_fixture("simple");
 
     test_run
-        .dregs_cmd()
+        .dregs_cmd_fast()
         .arg("--")
         .arg("--match-test")
         .arg("NonexistentTest")
@@ -391,6 +397,8 @@ fn test_generate_simple_project() {
         .arg("generate")
         .arg("--project")
         .arg(test_run.project_path())
+        .arg("--mutations")
+        .arg("delete-expression-mutation")
         .arg("--output")
         .arg(&output_dir)
         .assert()
@@ -436,6 +444,8 @@ fn test_generate_with_explicit_files() {
         .arg("generate")
         .arg("--project")
         .arg(test_run.project_path())
+        .arg("--mutations")
+        .arg("delete-expression-mutation")
         .arg("--output")
         .arg(&output_dir)
         .arg(file_path)
@@ -479,6 +489,8 @@ fn test_generate_test_report_pipeline() {
         .arg("generate")
         .arg("--project")
         .arg(test_run.project_path())
+        .arg("--mutations")
+        .arg("delete-expression-mutation")
         .arg("--output")
         .arg(&mutants_dir)
         .assert()
@@ -527,6 +539,8 @@ fn test_generate_test_with_partition() {
         .arg("generate")
         .arg("--project")
         .arg(test_run.project_path())
+        .arg("--mutations")
+        .arg("delete-expression-mutation")
         .arg("--output")
         .arg(&mutants_dir)
         .assert()
@@ -600,6 +614,8 @@ fn test_diff_base_generate_test_report_pipeline() {
         .arg("generate")
         .arg("--project")
         .arg(&project)
+        .arg("--mutations")
+        .arg("delete-expression-mutation")
         .arg("--diff-base")
         .arg("HEAD~1")
         .arg("--output")
@@ -702,6 +718,8 @@ fn test_diff_base_run_simple() {
         .arg("run")
         .arg("--project")
         .arg(&project)
+        .arg("--mutations")
+        .arg("delete-expression-mutation")
         .arg("--diff-base")
         .arg("HEAD~1")
         .assert()
@@ -733,6 +751,8 @@ fn test_test_invalid_partition() {
         .arg("generate")
         .arg("--project")
         .arg(test_run.project_path())
+        .arg("--mutations")
+        .arg("delete-expression-mutation")
         .arg("--output")
         .arg(&mutants_dir)
         .assert()
@@ -760,6 +780,8 @@ fn test_test_with_workers() {
         .arg("generate")
         .arg("--project")
         .arg(test_run.project_path())
+        .arg("--mutations")
+        .arg("delete-expression-mutation")
         .arg("--output")
         .arg(&mutants_dir)
         .assert()
@@ -786,6 +808,8 @@ fn test_test_no_output_prints_to_stdout() {
         .arg("generate")
         .arg("--project")
         .arg(test_run.project_path())
+        .arg("--mutations")
+        .arg("delete-expression-mutation")
         .arg("--output")
         .arg(&mutants_dir)
         .assert()
@@ -812,6 +836,8 @@ fn test_test_with_forge_args() {
         .arg("generate")
         .arg("--project")
         .arg(test_run.project_path())
+        .arg("--mutations")
+        .arg("delete-expression-mutation")
         .arg("--output")
         .arg(&mutants_dir)
         .assert()
@@ -842,6 +868,8 @@ fn test_report_no_result_files() {
         .arg("generate")
         .arg("--project")
         .arg(test_run.project_path())
+        .arg("--mutations")
+        .arg("delete-expression-mutation")
         .arg("--output")
         .arg(&mutants_dir)
         .assert()
@@ -866,6 +894,8 @@ fn test_report_with_fail_under() {
         .arg("generate")
         .arg("--project")
         .arg(test_run.project_path())
+        .arg("--mutations")
+        .arg("delete-expression-mutation")
         .arg("--output")
         .arg(&mutants_dir)
         .assert()
@@ -907,6 +937,8 @@ fn test_report_with_json_output() {
         .arg("generate")
         .arg("--project")
         .arg(test_run.project_path())
+        .arg("--mutations")
+        .arg("delete-expression-mutation")
         .arg("--output")
         .arg(&mutants_dir)
         .assert()
@@ -951,6 +983,8 @@ fn test_report_with_markdown_format() {
         .arg("generate")
         .arg("--project")
         .arg(test_run.project_path())
+        .arg("--mutations")
+        .arg("delete-expression-mutation")
         .arg("--output")
         .arg(&mutants_dir)
         .assert()
@@ -993,6 +1027,8 @@ fn test_report_partial_coverage_warning() {
         .arg("generate")
         .arg("--project")
         .arg(test_run.project_path())
+        .arg("--mutations")
+        .arg("delete-expression-mutation")
         .arg("--output")
         .arg(&mutants_dir)
         .assert()
@@ -1029,6 +1065,8 @@ fn test_test_empty_partition_with_output() {
         .arg("generate")
         .arg("--project")
         .arg(test_run.project_path())
+        .arg("--mutations")
+        .arg("delete-expression-mutation")
         .arg("--output")
         .arg(&mutants_dir)
         .assert()
@@ -1064,6 +1102,8 @@ fn test_test_empty_partition_without_output() {
         .arg("generate")
         .arg("--project")
         .arg(test_run.project_path())
+        .arg("--mutations")
+        .arg("delete-expression-mutation")
         .arg("--output")
         .arg(&mutants_dir)
         .assert()
@@ -1104,6 +1144,8 @@ contract FailingTest {
         .arg("run")
         .arg("--project")
         .arg(test_run.project_path())
+        .arg("--mutations")
+        .arg("delete-expression-mutation")
         .assert()
         .failure()
         .stderr(predicate::str::contains("baseline tests failed"));
@@ -1137,7 +1179,7 @@ fn test_test_workers_zero_fails() {
 fn test_run_with_workers() {
     let test_run = common::TestRun::from_fixture("simple");
     test_run
-        .dregs_cmd()
+        .dregs_cmd_fast()
         .arg("--workers")
         .arg("2")
         .assert()
