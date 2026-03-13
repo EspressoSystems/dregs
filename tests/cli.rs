@@ -40,6 +40,27 @@ fn test_run_simple_project() {
 }
 
 #[test]
+fn test_run_with_dregs_config() {
+    let test_run = common::TestRun::from_fixture("simple");
+    let config_src = common::fixture("simple").join("dregs.toml");
+    let config_dst = test_run.project_path().join("dregs.toml");
+    std::fs::copy(&config_src, &config_dst).unwrap();
+
+    dregs_cmd()
+        .arg("run")
+        .arg("--project")
+        .arg(test_run.project_path())
+        .arg("--config")
+        .arg(&config_dst)
+        .arg("--mutations")
+        .arg("delete-expression-mutation")
+        .assert()
+        .success()
+        .stderr(predicate::str::contains("Using dregs.toml:"))
+        .stdout(predicate::str::contains("Mutation score"));
+}
+
+#[test]
 fn test_run_with_explicit_files() {
     let test_run = common::TestRun::from_fixture("simple");
     let file_path = test_run.project_path().join("src/Counter.sol");
@@ -409,6 +430,31 @@ fn test_generate_simple_project() {
     let content = std::fs::read_to_string(output_dir.join("manifest.json")).unwrap();
     assert!(content.contains("\"version\": 1"));
     assert!(content.contains("mutants"));
+}
+
+#[test]
+fn test_generate_with_dregs_config() {
+    let test_run = common::TestRun::from_fixture("simple");
+    let config_src = common::fixture("simple").join("dregs.toml");
+    let config_dst = test_run.project_path().join("dregs.toml");
+    std::fs::copy(&config_src, &config_dst).unwrap();
+    let output_dir = test_run.project_path().join("mutants_out");
+
+    dregs_cmd()
+        .arg("generate")
+        .arg("--project")
+        .arg(test_run.project_path())
+        .arg("--config")
+        .arg(&config_dst)
+        .arg("--mutations")
+        .arg("delete-expression-mutation")
+        .arg("--output")
+        .arg(&output_dir)
+        .assert()
+        .success()
+        .stderr(predicate::str::contains("Using dregs.toml:"));
+
+    assert!(output_dir.join("manifest.json").exists());
 }
 
 #[test]
