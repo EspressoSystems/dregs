@@ -141,7 +141,7 @@
 
           dregs-unwrapped = craneLib.buildPackage (commonArgs // {
             inherit cargoArtifacts;
-            nativeCheckInputs = [ pkgs.foundry pkgs.solc-bin."0.8.30" ];
+            nativeCheckInputs = [ pkgs.git pkgs.foundry pkgs.solc-bin."0.8.30" ];
             preCheck = ''
               export HOME=$(mktemp -d)
               export FOUNDRY_SOLC=${pkgs.solc-bin."0.8.30"}/bin/solc
