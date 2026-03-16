@@ -10,6 +10,7 @@ Subcommands:
 - `generate` - write mutant manifest
 - `test` - run tests from manifest
 - `report` - merge partial results
+- `inspect` - view/test mutants from a manifest
 
 Key flags (see `dregs <subcommand> --help` for all):
 
@@ -22,12 +23,16 @@ Key flags (see `dregs <subcommand> --help` for all):
 - `--timeout SECS` - per mutant (run)
 - `--skip-validate` - via_ir workaround (run, test)
 - `--config PATH` - dregs.toml path (run, generate)
-- `-- <forge_args>` - forwarded to forge test (run, test)
+- `--ids IDS` - comma-separated mutant IDs (inspect)
+- `--results PATH` - results file to filter survived mutants (inspect)
+- `--test` - run forge test for selected mutants (inspect)
+- `-- <forge_args>` - forwarded to forge test (run, test, inspect)
 
 Configuration:
 
 - foundry.toml: auto-detected, reads optimizer/evm_version/remappings; remappings resolved via `forge remappings` if absent; solc version strings ignored (requires binary path)
 - dregs.toml: `[[target]]` with files (glob), contracts, functions, forge_args; mutually exclusive with CLI files/forge_args
+- Source comments: `dregs:ignore` (single line), `dregs:ignore-start`/`dregs:ignore-end` (block) to suppress mutations
 
 Diff filtering (`--diff-base` or `--diff-file`):
 
@@ -39,7 +44,14 @@ Diff filtering (`--diff-base` or `--diff-file`):
 CI sharding:
 
 - generate -> test (partition slice:M/N, round-robin by mutant ID) -> report (merge + `--format markdown`)
-- Manifest uses relative paths for portability
+- Manifest uses relative paths for portability; stores `ignored_ids` for ignored mutants
+
+Ignore comments:
+
+- `dregs:ignore` on a line excludes mutations on that line
+- `dregs:ignore-start`/`dregs:ignore-end` for block exclusion
+- Ignored mutants excluded from score (not in numerator or denominator)
+- Errors on unclosed blocks, unmatched ends, nested starts
 
 Execution:
 
@@ -93,9 +105,10 @@ rustfmt, clippy (-D warnings), nextest, cargo-llvm-cov (99% line/97% region/97% 
 src/
   main.rs          - entry point, delegates to cli::run
   lib.rs           - library root, test utilities
-  cli.rs           - clap structs, subcommands, orchestration
+  cli.rs           - clap structs, subcommands (run, generate, test, report, inspect), orchestration
   config.rs        - foundry.toml + dregs.toml parsing, project root, remappings
   diff.rs          - diff parsing (git/file/reader), mutant/target filtering by changed lines
+  ignore.rs        - dregs:ignore comment parsing, mutant filtering by ignored lines
   generator/
     mod.rs         - Generator trait, Mutant type, FileTarget
     gambit.rs      - Gambit implementation with contract/function filters

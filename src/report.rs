@@ -28,12 +28,16 @@ pub(crate) struct Report {
     pub(crate) total_mutants: u32,
     pub(crate) killed_mutants: u32,
     pub(crate) survived_mutants: u32,
+    #[serde(default)]
+    pub(crate) ignored_mutants: u32,
     pub(crate) mutation_score: f64,
     pub(crate) results: Vec<TestResult>,
 }
 
 impl Report {
-    pub(crate) fn new(results: Vec<TestResult>) -> Self {
+    /// Score is computed over tested mutants only; ignored mutants are excluded from
+    /// both numerator and denominator.
+    pub(crate) fn new(results: Vec<TestResult>, ignored_mutants: u32) -> Self {
         let total = results.len() as u32;
         let killed = results.iter().filter(|r| r.killed).count() as u32;
         let survived = total - killed;
@@ -47,6 +51,7 @@ impl Report {
             total_mutants: total,
             killed_mutants: killed,
             survived_mutants: survived,
+            ignored_mutants,
             mutation_score: score,
             results,
         }
@@ -126,13 +131,24 @@ impl Report {
             }
         }
 
-        writeln!(
-            w,
-            "Mutation score: {}/{} ({:.0}%)",
-            self.killed_mutants,
-            self.total_mutants,
-            self.mutation_score * 100.0
-        )?;
+        if self.ignored_mutants > 0 {
+            writeln!(
+                w,
+                "Mutation score: {}/{} ({:.0}%) [{} ignored]",
+                self.killed_mutants,
+                self.total_mutants,
+                self.mutation_score * 100.0,
+                self.ignored_mutants
+            )?;
+        } else {
+            writeln!(
+                w,
+                "Mutation score: {}/{} ({:.0}%)",
+                self.killed_mutants,
+                self.total_mutants,
+                self.mutation_score * 100.0
+            )?;
+        }
 
         if self.survived_mutants > 0 {
             writeln!(w, "Surviving mutants:")?;
@@ -194,12 +210,22 @@ impl Report {
         }
 
         writeln!(w)?;
-        let score = format!(
-            "**Mutation score: {}/{} ({:.0}%)**",
-            self.killed_mutants,
-            self.total_mutants,
-            self.mutation_score * 100.0
-        );
+        let score = if self.ignored_mutants > 0 {
+            format!(
+                "**Mutation score: {}/{} ({:.0}%)** [{} ignored]",
+                self.killed_mutants,
+                self.total_mutants,
+                self.mutation_score * 100.0,
+                self.ignored_mutants
+            )
+        } else {
+            format!(
+                "**Mutation score: {}/{} ({:.0}%)**",
+                self.killed_mutants,
+                self.total_mutants,
+                self.mutation_score * 100.0
+            )
+        };
         writeln!(w, "{score}")?;
 
         if self.survived_mutants > 0 {
@@ -234,6 +260,32 @@ impl Report {
         fs::write(path, json)?;
         Ok(())
     }
+}
+
+/// Read survived mutant IDs from a results file (Report JSON or raw Vec<TestResult> JSON).
+pub(crate) fn read_survived_ids(path: &Path) -> Result<HashSet<u32>> {
+    let content = fs::read_to_string(path)?;
+    // Try parsing as Report first
+    if let Ok(report) = serde_json::from_str::<Report>(&content) {
+        return Ok(report
+            .results
+            .iter()
+            .filter(|r| !r.killed)
+            .map(|r| r.mutant_id)
+            .collect());
+    }
+    // Fall back to Vec<TestResult>
+    let results: Vec<TestResult> = serde_json::from_str(&content).map_err(|e| {
+        ReportError::Generation(format!(
+            "{}: not a valid report or results file: {e}",
+            path.display()
+        ))
+    })?;
+    Ok(results
+        .iter()
+        .filter(|r| !r.killed)
+        .map(|r| r.mutant_id)
+        .collect())
 }
 
 #[cfg(test)]
@@ -310,7 +362,7 @@ mod tests {
             },
         ];
 
-        let report = Report::new(results);
+        let report = Report::new(results, 0);
         assert_eq!(report.total_mutants, 2);
         assert_eq!(report.killed_mutants, 2);
         assert_eq!(report.survived_mutants, 0);
@@ -334,7 +386,7 @@ mod tests {
             },
         ];
 
-        let report = Report::new(results);
+        let report = Report::new(results, 0);
         assert_eq!(report.total_mutants, 2);
         assert_eq!(report.killed_mutants, 1);
         assert_eq!(report.survived_mutants, 1);
@@ -344,7 +396,7 @@ mod tests {
     #[test]
     fn test_report_creation_empty() {
         let results = vec![];
-        let report = Report::new(results);
+        let report = Report::new(results, 0);
         assert_eq!(report.total_mutants, 0);
         assert_eq!(report.killed_mutants, 0);
         assert_eq!(report.survived_mutants, 0);
@@ -368,7 +420,7 @@ mod tests {
             },
         ];
 
-        let report = Report::new(results);
+        let report = Report::new(results, 0);
         assert_eq!(report.total_mutants, 2);
         assert_eq!(report.killed_mutants, 0);
         assert_eq!(report.survived_mutants, 2);
@@ -384,7 +436,7 @@ mod tests {
             duration: Duration::from_secs(1),
         }];
 
-        let report = Report::new(results);
+        let report = Report::new(results, 0);
         let json = serde_json::to_string(&report).unwrap();
         assert!(json.contains("total_mutants"));
         assert!(json.contains("mutation_score"));
@@ -405,7 +457,7 @@ mod tests {
 
     #[test]
     fn test_write_summary_empty() {
-        let report = Report::new(vec![]);
+        let report = Report::new(vec![], 0);
         let mut output = Vec::new();
         report.write_summary(&mut output, &[]).unwrap();
         let output = String::from_utf8(output).unwrap();
@@ -423,7 +475,7 @@ mod tests {
             duration: Duration::from_secs(1),
         }];
 
-        let report = Report::new(results);
+        let report = Report::new(results, 0);
         let temp = TempDir::new().unwrap();
         let output_path = temp.path().join("report.json");
 
@@ -438,7 +490,7 @@ mod tests {
 
     #[test]
     fn test_write_json_io_error() {
-        let report = Report::new(vec![]);
+        let report = Report::new(vec![], 0);
         let result = report.write_json(&PathBuf::from("/nonexistent/path/report.json"));
         pretty_assertions::assert_matches!(result, Err(ReportError::Io(_)));
     }
@@ -446,7 +498,7 @@ mod tests {
     #[test]
     fn test_survivor_diff_in_summary() {
         let (results, mutants) = sample_mixed_results();
-        let report = Report::new(results);
+        let report = Report::new(results, 0);
 
         let mut output = Vec::new();
         report.write_summary(&mut output, &mutants).unwrap();
@@ -500,7 +552,7 @@ mod tests {
             },
         ];
 
-        let report = Report::new(results);
+        let report = Report::new(results, 0);
 
         let mut output = Vec::new();
         report.write_summary(&mut output, &mutants).unwrap();
@@ -530,7 +582,7 @@ mod tests {
             forge_args: vec![],
         }];
 
-        let report = Report::new(results);
+        let report = Report::new(results, 0);
         let mut output = Vec::new();
         report.write_summary(&mut output, &mutants).unwrap();
         let output = String::from_utf8(output).unwrap();
@@ -540,7 +592,7 @@ mod tests {
     #[test]
     fn test_write_summary_io_error() {
         let (results, mutants) = sample_mixed_results();
-        let report = Report::new(results);
+        let report = Report::new(results, 0);
         let mut buf = [0u8; 0];
         let result = report.write_summary(&mut buf.as_mut_slice(), &mutants);
         assert!(result.is_err());
@@ -568,7 +620,7 @@ mod tests {
     #[test]
     fn test_write_summary_fails_midway() {
         let (results, mutants) = sample_mixed_results();
-        let report = Report::new(results);
+        let report = Report::new(results, 0);
         // Allow some bytes then fail
         let mut w = LimitedWriter { remaining: 50 };
         assert!(w.flush().is_ok());
@@ -579,7 +631,7 @@ mod tests {
     #[test]
     fn test_write_summary_markdown_fails_midway() {
         let (results, mutants) = sample_mixed_results();
-        let report = Report::new(results);
+        let report = Report::new(results, 0);
         let mut w = LimitedWriter { remaining: 80 };
         let result = report.write_summary_markdown(&mut w, &mutants);
         assert!(result.is_err());
@@ -626,7 +678,7 @@ mod tests {
             duration: Duration::from_secs(1),
         }];
 
-        let report = Report::new(results);
+        let report = Report::new(results, 0);
         let mut output = Vec::new();
         // Pass empty mutants so mutant_map won't find id 999
         report.write_summary(&mut output, &[]).unwrap();
@@ -643,7 +695,7 @@ mod tests {
     #[test]
     fn test_write_summary_markdown_mixed() {
         let (results, mutants) = sample_mixed_results();
-        let report = Report::new(results);
+        let report = Report::new(results, 0);
 
         let mut output = Vec::new();
         report
@@ -716,7 +768,7 @@ mod tests {
             },
         ];
 
-        let report = Report::new(results);
+        let report = Report::new(results, 0);
 
         let mut output = Vec::new();
         report
@@ -731,7 +783,7 @@ mod tests {
 
     #[test]
     fn test_write_summary_markdown_empty() {
-        let report = Report::new(vec![]);
+        let report = Report::new(vec![], 0);
         let mut output = Vec::new();
         report.write_summary_markdown(&mut output, &[]).unwrap();
         let output = String::from_utf8(output).unwrap();
@@ -750,7 +802,7 @@ mod tests {
             duration: Duration::from_secs(1),
         }];
 
-        let report = Report::new(results);
+        let report = Report::new(results, 0);
         let mut output = Vec::new();
         report.write_summary_markdown(&mut output, &[]).unwrap();
         let output = String::from_utf8(output).unwrap();
@@ -778,7 +830,7 @@ mod tests {
             line: 5,
         }];
 
-        let report = Report::new(results);
+        let report = Report::new(results, 0);
         let mut output = Vec::new();
         report
             .write_summary_markdown(&mut output, &mutants)
@@ -790,7 +842,7 @@ mod tests {
     #[test]
     fn test_write_summary_markdown_io_error() {
         let (results, mutants) = sample_mixed_results();
-        let report = Report::new(results);
+        let report = Report::new(results, 0);
         let mut buf = [0u8; 0];
         let result = report.write_summary_markdown(&mut buf.as_mut_slice(), &mutants);
         assert!(result.is_err());
@@ -842,5 +894,111 @@ mod tests {
 
         let result = Report::merge(&[file]);
         pretty_assertions::assert_matches!(result, Err(ReportError::Generation(_)));
+    }
+
+    #[test]
+    fn test_report_with_ignored_mutants() {
+        let results = vec![TestResult {
+            mutant_id: 1,
+            killed: true,
+            killed_by: Some("Test1".to_string()),
+            duration: Duration::from_secs(1),
+        }];
+        let report = Report::new(results, 3);
+        assert_eq!(report.total_mutants, 1);
+        assert_eq!(report.ignored_mutants, 3);
+        assert_eq!(report.mutation_score, 1.0);
+    }
+
+    #[test]
+    fn test_write_summary_shows_ignored() {
+        let results = vec![TestResult {
+            mutant_id: 1,
+            killed: true,
+            killed_by: Some("T".to_string()),
+            duration: Duration::from_secs(1),
+        }];
+        let report = Report::new(results, 2);
+        let mut output = Vec::new();
+        report.write_summary(&mut output, &[]).unwrap();
+        let output = String::from_utf8(output).unwrap();
+        assert!(output.contains("[2 ignored]"));
+    }
+
+    #[test]
+    fn test_write_summary_no_ignored_label_when_zero() {
+        let report = Report::new(vec![], 0);
+        let mut output = Vec::new();
+        report.write_summary(&mut output, &[]).unwrap();
+        let output = String::from_utf8(output).unwrap();
+        assert!(!output.contains("ignored"));
+    }
+
+    #[test]
+    fn test_read_survived_ids_from_report_json() {
+        use assert_fs::TempDir;
+        let dir = TempDir::new().unwrap();
+        let path = dir.path().join("report.json");
+        let report = Report::new(
+            vec![
+                TestResult {
+                    mutant_id: 1,
+                    killed: true,
+                    killed_by: Some("T".to_string()),
+                    duration: Duration::from_secs(1),
+                },
+                TestResult {
+                    mutant_id: 2,
+                    killed: false,
+                    killed_by: None,
+                    duration: Duration::from_secs(1),
+                },
+                TestResult {
+                    mutant_id: 3,
+                    killed: false,
+                    killed_by: None,
+                    duration: Duration::from_secs(1),
+                },
+            ],
+            0,
+        );
+        report.write_json(&path).unwrap();
+        let ids = read_survived_ids(&path).unwrap();
+        assert_eq!(ids, HashSet::from([2, 3]));
+    }
+
+    #[test]
+    fn test_read_survived_ids_from_raw_json() {
+        use assert_fs::TempDir;
+        let dir = TempDir::new().unwrap();
+        let path = dir.path().join("results.json");
+        let results = vec![
+            TestResult {
+                mutant_id: 1,
+                killed: true,
+                killed_by: Some("T".to_string()),
+                duration: Duration::from_secs(1),
+            },
+            TestResult {
+                mutant_id: 2,
+                killed: false,
+                killed_by: None,
+                duration: Duration::from_secs(1),
+            },
+        ];
+        std::fs::write(&path, serde_json::to_string(&results).unwrap()).unwrap();
+        let ids = read_survived_ids(&path).unwrap();
+        assert_eq!(ids, HashSet::from([2]));
+    }
+
+    #[test]
+    fn test_read_survived_ids_empty_results() {
+        use assert_fs::TempDir;
+        let dir = TempDir::new().unwrap();
+        let path = dir.path().join("results.json");
+        let results: Vec<TestResult> = vec![];
+        std::fs::write(&path, serde_json::to_string(&results).unwrap()).unwrap();
+        let ids = read_survived_ids(&path).unwrap();
+        assert!(ids.is_empty());
     }
 }

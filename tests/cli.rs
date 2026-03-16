@@ -1232,3 +1232,430 @@ fn test_run_with_workers() {
         .success()
         .stdout(predicate::str::contains("Mutation score"));
 }
+
+// --- Helper for generating mutants ---
+
+fn generate_mutants(fixture_path: &std::path::Path, output_dir: &std::path::Path) {
+    dregs_cmd()
+        .arg("generate")
+        .arg("--project")
+        .arg(fixture_path)
+        .arg("--mutations")
+        .arg("delete-expression-mutation")
+        .arg("--output")
+        .arg(output_dir)
+        .assert()
+        .success();
+}
+
+// --- Inspect subcommand tests ---
+
+#[test]
+fn test_inspect_all_mutants() {
+    let test_run = common::TestRun::from_fixture("simple");
+    let mutants_dir = test_run.project_path().join("mutants_out");
+    generate_mutants(&test_run.project_path(), &mutants_dir);
+
+    let manifest_path = mutants_dir.join("manifest.json");
+    dregs_cmd()
+        .arg("inspect")
+        .arg(&manifest_path)
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("[1]"))
+        .stdout(predicate::str::contains("->"));
+}
+
+#[test]
+fn test_inspect_with_ids() {
+    let test_run = common::TestRun::from_fixture("simple");
+    let mutants_dir = test_run.project_path().join("mutants_out");
+    generate_mutants(&test_run.project_path(), &mutants_dir);
+
+    let manifest_path = mutants_dir.join("manifest.json");
+    dregs_cmd()
+        .arg("inspect")
+        .arg(&manifest_path)
+        .arg("--ids")
+        .arg("1")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("[1]"))
+        .stdout(predicate::str::contains("[2]").not());
+}
+
+#[test]
+fn test_inspect_with_results() {
+    let test_run = common::TestRun::from_fixture("simple");
+    let mutants_dir = test_run.project_path().join("mutants_out");
+    generate_mutants(&test_run.project_path(), &mutants_dir);
+
+    let results_path = test_run.project_path().join("results.json");
+    let results = serde_json::json!([
+        {"mutant_id": 1, "killed": true, "killed_by": "CounterTest::test_Increment", "duration": {"secs": 1, "nanos": 0}},
+        {"mutant_id": 2, "killed": false, "killed_by": null, "duration": {"secs": 1, "nanos": 0}}
+    ]);
+    std::fs::write(&results_path, results.to_string()).unwrap();
+
+    let manifest_path = mutants_dir.join("manifest.json");
+    dregs_cmd()
+        .arg("inspect")
+        .arg(&manifest_path)
+        .arg("--results")
+        .arg(&results_path)
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("[2]"))
+        .stdout(predicate::str::contains("[1]").not());
+}
+
+#[test]
+fn test_inspect_no_matching_ids() {
+    let test_run = common::TestRun::from_fixture("simple");
+    let mutants_dir = test_run.project_path().join("mutants_out");
+    generate_mutants(&test_run.project_path(), &mutants_dir);
+
+    let manifest_path = mutants_dir.join("manifest.json");
+    dregs_cmd()
+        .arg("inspect")
+        .arg(&manifest_path)
+        .arg("--ids")
+        .arg("999")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("No matching mutants found"));
+}
+
+#[test]
+fn test_inspect_empty_results() {
+    let test_run = common::TestRun::from_fixture("simple");
+    let mutants_dir = test_run.project_path().join("mutants_out");
+    generate_mutants(&test_run.project_path(), &mutants_dir);
+
+    // All killed -> no survived mutants
+    let results_path = test_run.project_path().join("results.json");
+    let results = serde_json::json!([
+        {"mutant_id": 1, "killed": true, "killed_by": "SomeTest", "duration": {"secs": 1, "nanos": 0}},
+        {"mutant_id": 2, "killed": true, "killed_by": "SomeTest", "duration": {"secs": 1, "nanos": 0}}
+    ]);
+    std::fs::write(&results_path, results.to_string()).unwrap();
+
+    let manifest_path = mutants_dir.join("manifest.json");
+    dregs_cmd()
+        .arg("inspect")
+        .arg(&manifest_path)
+        .arg("--results")
+        .arg(&results_path)
+        .assert()
+        .success()
+        .stdout(predicate::str::contains(
+            "No survived mutants found in results",
+        ));
+}
+
+#[test]
+fn test_inspect_with_test() {
+    let test_run = common::TestRun::from_fixture("simple");
+    let mutants_dir = test_run.project_path().join("mutants_out");
+    generate_mutants(&test_run.project_path(), &mutants_dir);
+
+    let manifest_path = mutants_dir.join("manifest.json");
+    dregs_cmd()
+        .arg("inspect")
+        .arg(&manifest_path)
+        .arg("--ids")
+        .arg("1")
+        .arg("--test")
+        .arg("--project")
+        .arg(test_run.project_path())
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Testing"))
+        .stdout(predicate::str::contains("KILLED").or(predicate::str::contains("SURVIVED")));
+}
+
+#[test]
+fn test_inspect_test_requires_project() {
+    let test_run = common::TestRun::from_fixture("simple");
+    let mutants_dir = test_run.project_path().join("mutants_out");
+    generate_mutants(&test_run.project_path(), &mutants_dir);
+
+    let manifest_path = mutants_dir.join("manifest.json");
+    dregs_cmd()
+        .arg("inspect")
+        .arg(&manifest_path)
+        .arg("--ids")
+        .arg("1")
+        .arg("--test")
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("--project is required"));
+}
+
+#[test]
+fn test_inspect_with_test_and_forge_args() {
+    let test_run = common::TestRun::from_fixture("simple");
+    let mutants_dir = test_run.project_path().join("mutants_out");
+    generate_mutants(&test_run.project_path(), &mutants_dir);
+
+    let manifest_path = mutants_dir.join("manifest.json");
+    dregs_cmd()
+        .arg("inspect")
+        .arg(&manifest_path)
+        .arg("--ids")
+        .arg("1")
+        .arg("--test")
+        .arg("--project")
+        .arg(test_run.project_path())
+        .arg("--")
+        .arg("--match-test")
+        .arg("test_Increment")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("KILLED").or(predicate::str::contains("SURVIVED")));
+}
+
+// --- Inspect with results in Report format ---
+
+#[test]
+fn test_inspect_with_report_format_results() {
+    let test_run = common::TestRun::from_fixture("simple");
+    let mutants_dir = test_run.project_path().join("mutants_out");
+    generate_mutants(&test_run.project_path(), &mutants_dir);
+
+    // Write a Report-format JSON (not raw Vec<TestResult>)
+    let results_path = test_run.project_path().join("report.json");
+    let report = serde_json::json!({
+        "total_mutants": 2,
+        "killed_mutants": 1,
+        "survived_mutants": 1,
+        "ignored_mutants": 0,
+        "mutation_score": 0.5,
+        "results": [
+            {"mutant_id": 1, "killed": true, "killed_by": "SomeTest", "duration": {"secs": 1, "nanos": 0}},
+            {"mutant_id": 2, "killed": false, "killed_by": null, "duration": {"secs": 1, "nanos": 0}}
+        ]
+    });
+    std::fs::write(&results_path, report.to_string()).unwrap();
+
+    let manifest_path = mutants_dir.join("manifest.json");
+    dregs_cmd()
+        .arg("inspect")
+        .arg(&manifest_path)
+        .arg("--results")
+        .arg(&results_path)
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("[2]"))
+        .stdout(predicate::str::contains("[1]").not());
+}
+
+// --- read_survived_ids error path ---
+
+#[test]
+fn test_inspect_with_invalid_results_file() {
+    let test_run = common::TestRun::from_fixture("simple");
+    let mutants_dir = test_run.project_path().join("mutants_out");
+    generate_mutants(&test_run.project_path(), &mutants_dir);
+
+    let results_path = test_run.project_path().join("bad_results.json");
+    std::fs::write(&results_path, "not valid json at all").unwrap();
+
+    let manifest_path = mutants_dir.join("manifest.json");
+    dregs_cmd()
+        .arg("inspect")
+        .arg(&manifest_path)
+        .arg("--results")
+        .arg(&results_path)
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("failed to read results file"));
+}
+
+// --- Ignore integration tests ---
+
+#[test]
+fn test_run_with_ignore_comments() {
+    let test_run = common::TestRun::from_fixture("simple");
+    let counter_path = test_run.project_path().join("src/Counter.sol");
+    let content = std::fs::read_to_string(&counter_path).unwrap();
+    let modified = content.replace(
+        "number = number + 1;",
+        "number = number + 1; // dregs:ignore",
+    );
+    std::fs::write(&counter_path, modified).unwrap();
+
+    test_run
+        .dregs_cmd_fast()
+        .assert()
+        .success()
+        .stderr(predicate::str::contains("Ignored"))
+        .stderr(predicate::str::contains("dregs:ignore"))
+        .stdout(predicate::str::contains("ignored"));
+}
+
+#[test]
+fn test_generate_with_ignore_comments() {
+    let test_run = common::TestRun::from_fixture("simple");
+    let counter_path = test_run.project_path().join("src/Counter.sol");
+    let content = std::fs::read_to_string(&counter_path).unwrap();
+    let modified = content.replace(
+        "number = number + 1;",
+        "number = number + 1; // dregs:ignore",
+    );
+    std::fs::write(&counter_path, modified).unwrap();
+
+    let output_dir = test_run.project_path().join("mutants_out");
+    dregs_cmd()
+        .arg("generate")
+        .arg("--project")
+        .arg(test_run.project_path())
+        .arg("--mutations")
+        .arg("delete-expression-mutation")
+        .arg("--output")
+        .arg(&output_dir)
+        .assert()
+        .success()
+        .stderr(predicate::str::contains("Ignored"));
+
+    let manifest_content = std::fs::read_to_string(output_dir.join("manifest.json")).unwrap();
+    let manifest: serde_json::Value = serde_json::from_str(&manifest_content).unwrap();
+    let ignored_ids = manifest["ignored_ids"].as_array().unwrap();
+    assert!(
+        !ignored_ids.is_empty(),
+        "ignored_ids should be non-empty when dregs:ignore is present"
+    );
+}
+
+// --- Report with ignored mutants ---
+
+#[test]
+fn test_report_shows_ignored_count() {
+    let test_run = common::TestRun::from_fixture("simple");
+    let counter_path = test_run.project_path().join("src/Counter.sol");
+    let content = std::fs::read_to_string(&counter_path).unwrap();
+    let modified = content.replace(
+        "number = number + 1;",
+        "number = number + 1; // dregs:ignore",
+    );
+    std::fs::write(&counter_path, modified).unwrap();
+
+    let mutants_dir = test_run.project_path().join("mutants_out");
+    let results_path = test_run.project_path().join("results.json");
+
+    // Generate (will record ignored_ids in manifest)
+    dregs_cmd()
+        .arg("generate")
+        .arg("--project")
+        .arg(test_run.project_path())
+        .arg("--mutations")
+        .arg("delete-expression-mutation")
+        .arg("--output")
+        .arg(&mutants_dir)
+        .assert()
+        .success();
+
+    let manifest_path = mutants_dir.join("manifest.json");
+
+    // Test
+    dregs_cmd()
+        .arg("test")
+        .arg("--manifest")
+        .arg(&manifest_path)
+        .arg("--project")
+        .arg(test_run.project_path())
+        .arg("--output")
+        .arg(&results_path)
+        .assert()
+        .success();
+
+    // Report (text format)
+    dregs_cmd()
+        .arg("report")
+        .arg(&manifest_path)
+        .arg(&results_path)
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("ignored"));
+}
+
+#[test]
+fn test_report_markdown_shows_ignored_count() {
+    let test_run = common::TestRun::from_fixture("simple");
+    let counter_path = test_run.project_path().join("src/Counter.sol");
+    let content = std::fs::read_to_string(&counter_path).unwrap();
+    let modified = content.replace(
+        "number = number + 1;",
+        "number = number + 1; // dregs:ignore",
+    );
+    std::fs::write(&counter_path, modified).unwrap();
+
+    let mutants_dir = test_run.project_path().join("mutants_out");
+    let results_path = test_run.project_path().join("results.json");
+
+    // Generate
+    dregs_cmd()
+        .arg("generate")
+        .arg("--project")
+        .arg(test_run.project_path())
+        .arg("--mutations")
+        .arg("delete-expression-mutation")
+        .arg("--output")
+        .arg(&mutants_dir)
+        .assert()
+        .success();
+
+    let manifest_path = mutants_dir.join("manifest.json");
+
+    // Test
+    dregs_cmd()
+        .arg("test")
+        .arg("--manifest")
+        .arg(&manifest_path)
+        .arg("--project")
+        .arg(test_run.project_path())
+        .arg("--output")
+        .arg(&results_path)
+        .assert()
+        .success();
+
+    // Report (markdown format)
+    dregs_cmd()
+        .arg("report")
+        .arg(&manifest_path)
+        .arg(&results_path)
+        .arg("--format")
+        .arg("markdown")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("ignored"));
+}
+
+#[test]
+fn test_inspect_with_test_survived() {
+    let test_run = common::TestRun::from_fixture("simple");
+    let mutants_dir = test_run.project_path().join("mutants_out");
+    generate_mutants(&test_run.project_path(), &mutants_dir);
+
+    let manifest_path = mutants_dir.join("manifest.json");
+    // Use --match-test with a nonexistent test so no tests run and mutant survives
+    dregs_cmd()
+        .arg("inspect")
+        .arg(&manifest_path)
+        .arg("--ids")
+        .arg("1")
+        .arg("--test")
+        .arg("--project")
+        .arg(test_run.project_path())
+        .arg("--")
+        .arg("--match-test")
+        .arg("NonExistentTestThatMatchesNothing")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("SURVIVED"));
+}
+
+#[test]
+fn test_inspect_help() {
+    dregs_cmd().arg("inspect").arg("--help").assert().success();
+}

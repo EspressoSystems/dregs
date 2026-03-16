@@ -6,6 +6,8 @@ use std::process;
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::time::Instant;
 
+use std::collections::HashSet;
+
 use crate::config::{
     DregsConfig, FoundryConfig, find_project_root, parse_dregs_toml, parse_foundry_toml,
     resolve_remappings,
@@ -15,9 +17,10 @@ use crate::diff::{
 };
 use crate::generator::gambit::GambitGenerator;
 use crate::generator::{FileTarget, GeneratorConfig, Mutant, MutationGenerator};
+use crate::ignore::filter_ignored_mutants;
 use crate::manifest::Manifest;
 use crate::partition::Partition;
-use crate::report::Report;
+use crate::report::{Report, read_survived_ids};
 use crate::runner::{TestResult, list_forge_tests, run_forge_test_baseline, run_mutant};
 
 pub(crate) fn parse_workers(s: &str) -> std::result::Result<usize, String> {
@@ -208,6 +211,35 @@ pub(crate) enum Commands {
         )]
         format: OutputFormat,
     },
+
+    /// Inspect mutants from a manifest
+    Inspect {
+        #[arg(help = "Path to manifest.json")]
+        manifest: PathBuf,
+
+        #[arg(
+            long,
+            help = "Comma-separated mutant IDs to inspect",
+            value_delimiter = ','
+        )]
+        ids: Vec<u32>,
+
+        #[arg(
+            long,
+            conflicts_with = "ids",
+            help = "Path to results file (report.json or results-*.json) to filter survived mutants"
+        )]
+        results: Option<PathBuf>,
+
+        #[arg(long, help = "Run forge test for selected mutants")]
+        test: bool,
+
+        #[arg(short, long, help = "Project root (required with --test)")]
+        project: Option<PathBuf>,
+
+        #[arg(last = true, help = "Extra arguments passed to forge test (after --)")]
+        forge_args: Vec<String>,
+    },
 }
 
 pub fn run(cli: Cli) -> Result<()> {
@@ -281,6 +313,16 @@ pub fn run(cli: Cli) -> Result<()> {
             format,
         } => {
             cmd_report(manifest, result_files, output, fail_under, format)?;
+        }
+        Commands::Inspect {
+            manifest,
+            ids,
+            results,
+            test,
+            project,
+            forge_args,
+        } => {
+            cmd_inspect(manifest, ids, results, test, project, &forge_args)?;
         }
     }
 
@@ -433,6 +475,18 @@ fn apply_diff_mutant_filter(
         );
     }
     filtered
+}
+
+fn apply_ignore_filter(mutants: Vec<Mutant>) -> Result<(Vec<Mutant>, Vec<Mutant>)> {
+    let (active, ignored) =
+        filter_ignored_mutants(mutants).context("failed to filter ignored mutants")?;
+    if !ignored.is_empty() {
+        eprintln!(
+            "Ignored {} mutants with dregs:ignore comments",
+            ignored.len()
+        );
+    }
+    Ok((active, ignored))
 }
 
 fn generate_mutants(
@@ -639,6 +693,8 @@ fn run_mutation_testing(
         skip_validate,
     )?;
     let mutants = apply_diff_mutant_filter(mutants, diff_ranges.as_deref());
+    let (mutants, ignored) = apply_ignore_filter(mutants)?;
+    let ignored_count = ignored.len() as u32;
     if mutants.is_empty() {
         if diff_ranges.is_some() {
             println!("Mutation score: 100.0% (0 mutants)");
@@ -656,7 +712,7 @@ fn run_mutation_testing(
 
     let results = run_mutants_parallel(&mutants, &project_root, workers)?;
 
-    let report = Report::new(results);
+    let report = Report::new(results, ignored_count);
     report.print_summary(&mutants);
 
     if let Some(output_path) = output {
@@ -735,12 +791,15 @@ fn cmd_generate(
         skip_validate,
     )?;
     let mutants = apply_diff_mutant_filter(mutants, diff_ranges.as_deref());
+    let (mutants, ignored) = apply_ignore_filter(mutants)?;
+    let ignored_ids: Vec<u32> = ignored.iter().map(|m| m.id).collect();
     if mutants.is_empty() {
         println!("No mutants generated");
         return Ok(());
     }
 
-    let manifest = Manifest::write(&output, mutants).context("failed to write manifest")?;
+    let manifest =
+        Manifest::write(&output, mutants, ignored_ids).context("failed to write manifest")?;
     eprintln!(
         "Generated {} mutants to {}",
         manifest.mutants.len(),
@@ -825,6 +884,7 @@ fn cmd_report(
     format: OutputFormat,
 ) -> Result<()> {
     let manifest = Manifest::read(&manifest_path).context("failed to read manifest")?;
+    let ignored_count = manifest.ignored_ids.len() as u32;
 
     let results = Report::merge(&result_files).context("failed to merge results")?;
 
@@ -836,7 +896,7 @@ fn cmd_report(
         );
     }
 
-    let report = Report::new(results);
+    let report = Report::new(results, ignored_count);
     match format {
         OutputFormat::Markdown => report.print_summary_markdown(&manifest.mutants),
         OutputFormat::Text => report.print_summary(&manifest.mutants),
@@ -858,6 +918,99 @@ fn cmd_report(
             threshold * 100.0
         );
         process::exit(1);
+    }
+
+    Ok(())
+}
+
+fn cmd_inspect(
+    manifest_path: PathBuf,
+    ids: Vec<u32>,
+    results_path: Option<PathBuf>,
+    test: bool,
+    project: Option<PathBuf>,
+    forge_args: &[String],
+) -> Result<()> {
+    if test && project.is_none() {
+        anyhow::bail!("--project is required when using --test");
+    }
+
+    let manifest = Manifest::read(&manifest_path).context("failed to read manifest")?;
+
+    // Determine which mutant IDs to show
+    let selected_ids: Option<HashSet<u32>> = if !ids.is_empty() {
+        Some(ids.into_iter().collect())
+    } else if let Some(ref results_file) = results_path {
+        let survived = read_survived_ids(results_file).context("failed to read results file")?;
+        if survived.is_empty() {
+            println!("No survived mutants found in results");
+            return Ok(());
+        }
+        Some(survived)
+    } else {
+        None // show all
+    };
+
+    let mutants: Vec<&Mutant> = manifest
+        .mutants
+        .iter()
+        .filter(|m| selected_ids.as_ref().is_none_or(|ids| ids.contains(&m.id)))
+        .collect();
+
+    if mutants.is_empty() {
+        println!("No matching mutants found");
+        return Ok(());
+    }
+
+    // Print diffs for each mutant
+    for mutant in &mutants {
+        println!(
+            "[{}] {}:{} {}",
+            mutant.id,
+            mutant.relative_source_path.display(),
+            mutant.line,
+            mutant.operator
+        );
+        println!("  `{}` -> `{}`", mutant.original, mutant.replacement);
+    }
+
+    // Optionally run tests
+    if test {
+        let project = project.unwrap();
+        let project_root = resolve_project_root(&[], &project)?;
+        println!();
+        println!("Testing {} mutants...", mutants.len());
+        for mutant in &mutants {
+            let result = if forge_args.is_empty() {
+                run_mutant(mutant, &project_root)
+            } else {
+                let mut owned = (*mutant).clone();
+                owned.forge_args = forge_args.to_vec();
+                run_mutant(&owned, &project_root)
+            }
+            .with_context(|| format!("failed to test mutant {}", mutant.id))?;
+            let status = if result.killed {
+                format!(
+                    "KILLED{}",
+                    result
+                        .killed_by
+                        .as_deref()
+                        .map(|t| format!(" by {}", t))
+                        .unwrap_or_default()
+                )
+            } else {
+                "SURVIVED".to_string()
+            };
+            println!(
+                "[{}] {}:{} {} -> {} ({:.1}s)",
+                mutant.id,
+                mutant.relative_source_path.display(),
+                mutant.line,
+                mutant.operator,
+                status,
+                result.duration.as_secs_f64()
+            );
+        }
     }
 
     Ok(())
@@ -1549,6 +1702,57 @@ diff --git a/src/Counter.sol b/src/Counter.sol
         assert_eq!(result.len(), 2);
         assert_eq!(result[0], vec!["--match-contract", "ATest"]);
         assert_eq!(result[1], vec!["--match-contract", "BTest"]);
+    }
+
+    #[test]
+    fn test_cli_inspect_parse() {
+        use clap::Parser;
+        let cli = Cli::parse_from([
+            "dregs",
+            "inspect",
+            "manifest.json",
+            "--ids",
+            "1,3,7",
+            "--test",
+            "--project",
+            ".",
+        ]);
+        let Commands::Inspect {
+            manifest,
+            ids,
+            test,
+            project,
+            ..
+        } = cli.command
+        else {
+            panic!("expected Inspect command")
+        };
+        assert_eq!(manifest, PathBuf::from("manifest.json"));
+        assert_eq!(ids, vec![1, 3, 7]);
+        assert!(test);
+        assert_eq!(project, Some(PathBuf::from(".")));
+    }
+
+    #[test]
+    fn test_cli_inspect_defaults() {
+        use clap::Parser;
+        let cli = Cli::parse_from(["dregs", "inspect", "manifest.json"]);
+        let Commands::Inspect {
+            manifest,
+            ids,
+            results,
+            test,
+            project,
+            ..
+        } = cli.command
+        else {
+            panic!("expected Inspect command")
+        };
+        assert_eq!(manifest, PathBuf::from("manifest.json"));
+        assert!(ids.is_empty());
+        assert!(results.is_none());
+        assert!(!test);
+        assert!(project.is_none());
     }
 
     #[test]
