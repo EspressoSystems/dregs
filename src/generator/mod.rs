@@ -29,12 +29,23 @@ pub(crate) struct Mutant {
     pub(crate) forge_args: Vec<String>,
 }
 
-#[derive(Debug, Clone)]
+/// Invariant: `functions` and `exclude_functions` are mutually exclusive (enforced in config parsing).
+#[derive(Debug, Clone, Default)]
 pub(crate) struct FileTarget {
     pub(crate) file: PathBuf,
     pub(crate) contracts: Vec<String>,
     pub(crate) functions: Vec<String>,
+    pub(crate) exclude_functions: Vec<String>,
     pub(crate) forge_args: Vec<String>,
+}
+
+impl FileTarget {
+    pub(crate) fn new(file: PathBuf) -> Self {
+        Self {
+            file,
+            ..Default::default()
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -77,12 +88,7 @@ mod tests {
     fn test_generator_config_creation() {
         let config = GeneratorConfig {
             project_root: PathBuf::from("."),
-            targets: vec![FileTarget {
-                file: PathBuf::from("src/Counter.sol"),
-                contracts: vec![],
-                functions: vec![],
-                forge_args: vec![],
-            }],
+            targets: vec![FileTarget::new(PathBuf::from("src/Counter.sol"))],
             operators: vec!["binary-op-mutation".to_string()],
             output_dir: PathBuf::from("gambit_out"),
             foundry_config: None,

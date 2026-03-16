@@ -267,6 +267,7 @@ dependencies = [
  "predicates",
  "pretty_assertions",
  "rayon",
+ "regex",
  "serde",
  "serde_json",
  "tempfile",

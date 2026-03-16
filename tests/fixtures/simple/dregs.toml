@@ -1,5 +1,5 @@
 [[target]]
 files = ["src/Counter.sol"]
 contracts = ["Counter"]
-functions = ["increment", "setNumber", "decrement"]
+exclude_functions = ["increment"]
 forge_args = ["--match-contract", "CounterTest"]

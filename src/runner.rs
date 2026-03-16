@@ -774,12 +774,7 @@ solc = "0.8.30"
         let generator = GambitGenerator::new();
         let config = GeneratorConfig {
             project_root: project_root.clone(),
-            targets: vec![FileTarget {
-                file: project_root.join("src/Counter.sol"),
-                contracts: vec![],
-                functions: vec![],
-                forge_args: vec![],
-            }],
+            targets: vec![FileTarget::new(project_root.join("src/Counter.sol"))],
             operators: vec![],
             output_dir,
             foundry_config: None,
