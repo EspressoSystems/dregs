@@ -1,7 +1,7 @@
 # dregs - Solidity Mutation Testing Runner
 
-A Rust CLI tool that runs mutation testing for Solidity projects using Foundry. Uses Gambit for
-mutation generation with an abstraction layer for future generator support.
+A Rust CLI tool that runs mutation testing for Solidity projects using Foundry. Uses Gambit for mutation generation with
+an abstraction layer for future generator support.
 
 ## Features
 
@@ -31,13 +31,11 @@ Key flags (see `dregs <subcommand> --help` for all):
 
 Configuration:
 
-- foundry.toml: auto-detected, reads optimizer/evm_version/remappings; remappings resolved via
-  `forge remappings` if absent; solc version strings ignored (requires binary path)
-- dregs.toml: `[[target]]` with files (glob), contracts, functions, exclude_functions, forge_args;
-  mutually exclusive with CLI files/forge_args; `functions` and `exclude_functions` are mutually
-  exclusive per target
-- Source comments: `dregs:ignore` (single line), `dregs:ignore-start`/`dregs:ignore-end` (block) to
-  suppress mutations
+- foundry.toml: auto-detected, reads optimizer/evm_version/remappings; remappings resolved via `forge remappings` if
+  absent; solc version strings ignored (requires binary path)
+- dregs.toml: `[[target]]` with files (glob), contracts, functions, exclude_functions, forge_args; mutually exclusive
+  with CLI files/forge_args; `functions` and `exclude_functions` are mutually exclusive per target
+- Source comments: `dregs:ignore` (single line), `dregs:ignore-start`/`dregs:ignore-end` (block) to suppress mutations
 
 Diff filtering (`--diff-base` or `--diff-file`):
 
@@ -48,8 +46,7 @@ Diff filtering (`--diff-base` or `--diff-file`):
 
 CI sharding:
 
-- generate -> test (partition slice:M/N, round-robin by mutant ID) -> report (merge +
-  `--format markdown`)
+- generate -> test (partition slice:M/N, round-robin by mutant ID) -> report (merge + `--format markdown`)
 - Manifest uses relative paths for portability; stores `ignored_ids` for ignored mutants
 
 Ignore comments:
@@ -103,8 +100,8 @@ Semantic commits, present tense, bullet points. Types: feat, fix, docs, refactor
 
 ### Pre-commit Hooks
 
-rustfmt, clippy (-D warnings), nextest, cargo-llvm-cov (99% line/97% region/97% function; skipped on
-Darwin), typos, cargo-lock, nixpkgs-fmt
+rustfmt, clippy (-D warnings), nextest, cargo-llvm-cov (99% line/97% region/97% function; skipped on Darwin), typos,
+cargo-lock, nixpkgs-fmt
 
 ## Architecture
 
@@ -137,8 +134,8 @@ src/
 
 ## Design Decisions
 
-- **Binary crate, no public API**: only `Cli` and `run` are re-exported from lib.rs for main.rs; all
-  modules are private. Don't mark items `pub` unless they're used from another module.
+- **Binary crate, no public API**: only `Cli` and `run` are re-exported from lib.rs for main.rs; all modules are
+  private. Don't mark items `pub` unless they're used from another module.
 - **Generator trait**: abstract mutation source for future flexibility
 - **Gambit as library**: use gambit crate directly via `run_mutate()` API
 - **Forge as subprocess**: forge internals not designed for library use

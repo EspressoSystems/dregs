@@ -48,11 +48,8 @@ jobs:
           name: dregs-binary
       - run: chmod +x ./dregs
       - run: >-
-          ./dregs test
-          --manifest ./mutants/manifest.json
-          --project tests/fixtures/simple
-          --partition slice:${{ matrix.shard }}/4
-          --output results-${{ matrix.shard }}.json
+          ./dregs test --manifest ./mutants/manifest.json --project tests/fixtures/simple --partition slice:${{
+          matrix.shard }}/4 --output results-${{ matrix.shard }}.json
       - uses: actions/upload-artifact@v7
         with:
           name: results-${{ matrix.shard }}
@@ -75,9 +72,8 @@ jobs:
           merge-multiple: true
       - run: chmod +x ./dregs
       - run: >-
-          ./dregs report ./mutants/manifest.json results-*.json
-          --format markdown --output report.json
-          | tee "$GITHUB_STEP_SUMMARY"
+          ./dregs report ./mutants/manifest.json results-*.json --format markdown --output report.json | tee
+          "$GITHUB_STEP_SUMMARY"
       - uses: actions/upload-artifact@v7
         with:
           name: mutation-report

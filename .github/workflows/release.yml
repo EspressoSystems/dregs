@@ -40,7 +40,9 @@ jobs:
       - run: cargo build --release --target ${{ matrix.target }}
       - run: cp target/${{ matrix.target }}/release/dregs dregs
       - run: tar czf ${{ matrix.artifact }}.tar.gz dregs
-      - run: sha256sum ${{ matrix.artifact }}.tar.gz > ${{ matrix.artifact }}.tar.gz.sha256 || shasum -a 256 ${{ matrix.artifact }}.tar.gz > ${{ matrix.artifact }}.tar.gz.sha256
+      - run:
+          sha256sum ${{ matrix.artifact }}.tar.gz > ${{ matrix.artifact }}.tar.gz.sha256 || shasum -a 256 ${{
+          matrix.artifact }}.tar.gz > ${{ matrix.artifact }}.tar.gz.sha256
       - uses: actions/upload-artifact@v7
         with:
           name: ${{ matrix.artifact }}

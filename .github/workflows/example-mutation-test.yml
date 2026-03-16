@@ -40,11 +40,8 @@ jobs:
           name: mutants
           path: mutants
       - run: >-
-          dregs test
-          --manifest ./mutants/manifest.json
-          --project tests/fixtures/simple
-          --partition slice:${{ matrix.shard }}/4
-          --output results-${{ matrix.shard }}.json
+          dregs test --manifest ./mutants/manifest.json --project tests/fixtures/simple --partition slice:${{
+          matrix.shard }}/4 --output results-${{ matrix.shard }}.json
       - uses: actions/upload-artifact@v7
         with:
           name: results-${{ matrix.shard }}
@@ -65,6 +62,4 @@ jobs:
           pattern: results-*
           merge-multiple: true
       - run: >-
-          dregs report ./mutants/manifest.json results-*.json
-          --format markdown
-          | tee "$GITHUB_STEP_SUMMARY"
+          dregs report ./mutants/manifest.json results-*.json --format markdown | tee "$GITHUB_STEP_SUMMARY"
