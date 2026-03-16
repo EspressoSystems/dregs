@@ -106,6 +106,41 @@ Merge results and report:
 dregs report ./mutants/manifest.json results-*.json --fail-under 0.8
 ```
 
+### Ignoring mutants
+
+Add `dregs:ignore` comments in your Solidity source to suppress mutations on specific lines or blocks:
+
+```solidity
+function admin() public { // dregs:ignore
+    owner = msg.sender;
+}
+
+// dregs:ignore-start
+function legacyDeposit() public {
+    // ...
+}
+// dregs:ignore-end
+```
+
+Ignored mutants are excluded from the score (not counted in numerator or denominator). The count is shown in the summary when non-zero.
+
+### Inspecting mutants
+
+View mutant details from a manifest:
+
+```bash
+dregs inspect ./mutants/manifest.json
+dregs inspect ./mutants/manifest.json --ids 2,5,9
+dregs inspect ./mutants/manifest.json --results report.json
+```
+
+Optionally re-run tests for selected mutants:
+
+```bash
+dregs inspect ./mutants/manifest.json --ids 2 --test --project .
+dregs inspect ./mutants/manifest.json --results report.json --test --project . -- --match-contract CounterTest
+```
+
 ### CI
 
 See [`.github/workflows/example-mutation-test.yml`](.github/workflows/example-mutation-test.yml) for a sharded GitHub Actions workflow using release binaries.

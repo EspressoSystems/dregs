@@ -2,6 +2,7 @@ mod cli;
 mod config;
 mod diff;
 mod generator;
+mod ignore;
 mod manifest;
 mod partition;
 mod report;

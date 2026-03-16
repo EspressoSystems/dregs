@@ -20,12 +20,18 @@ pub(crate) type Result<T> = std::result::Result<T, ManifestError>;
 pub(crate) struct Manifest {
     pub(crate) version: u32,
     pub(crate) mutants: Vec<Mutant>,
+    #[serde(default)]
+    pub(crate) ignored_ids: Vec<u32>,
 }
 
 impl Manifest {
     /// Write manifest and copy mutant files to output directory.
     /// Paths in manifest are stored relative to the output directory.
-    pub(crate) fn write(output_dir: &Path, mutants: Vec<Mutant>) -> Result<Self> {
+    pub(crate) fn write(
+        output_dir: &Path,
+        mutants: Vec<Mutant>,
+        ignored_ids: Vec<u32>,
+    ) -> Result<Self> {
         fs::create_dir_all(output_dir)?;
 
         let mut manifest_mutants = Vec::new();
@@ -53,6 +59,7 @@ impl Manifest {
         let manifest = Manifest {
             version: 1,
             mutants: manifest_mutants,
+            ignored_ids,
         };
 
         let json = serde_json::to_string_pretty(&manifest)?;
@@ -125,7 +132,7 @@ mod tests {
         let output_dir = TempDir::new().unwrap();
 
         let mutants = sample_mutants(mutant_dir.path());
-        let manifest = Manifest::write(output_dir.path(), mutants).unwrap();
+        let manifest = Manifest::write(output_dir.path(), mutants, vec![]).unwrap();
 
         assert!(output_dir.child("manifest.json").exists());
         assert!(output_dir.child("mutants/1/Counter.sol").exists());
@@ -141,7 +148,7 @@ mod tests {
         let output_dir = TempDir::new().unwrap();
 
         let mutants = sample_mutants(mutant_dir.path());
-        Manifest::write(output_dir.path(), mutants).unwrap();
+        Manifest::write(output_dir.path(), mutants, vec![]).unwrap();
 
         let manifest_path = output_dir.path().join("manifest.json");
         let loaded = Manifest::read(&manifest_path).unwrap();
@@ -160,7 +167,7 @@ mod tests {
         let output_dir = TempDir::new().unwrap();
 
         let mutants = sample_mutants(mutant_dir.path());
-        let written = Manifest::write(output_dir.path(), mutants).unwrap();
+        let written = Manifest::write(output_dir.path(), mutants, vec![]).unwrap();
 
         let manifest_path = output_dir.path().join("manifest.json");
         let loaded = Manifest::read(&manifest_path).unwrap();
@@ -198,5 +205,16 @@ mod tests {
 
         let result = Manifest::read(&manifest_path);
         pretty_assertions::assert_matches!(result, Err(ManifestError::MissingMutantFile(_)));
+    }
+
+    #[test]
+    fn backward_compat_no_ignored_ids() {
+        let json = serde_json::json!({
+            "version": 1,
+            "mutants": []
+        });
+
+        let manifest: Manifest = serde_json::from_value(json).unwrap();
+        assert!(manifest.ignored_ids.is_empty());
     }
 }
