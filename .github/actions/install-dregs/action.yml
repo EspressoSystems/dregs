@@ -18,20 +18,22 @@ runs:
         if [ -n "${{ inputs.github-token }}" ]; then
           AUTH_HEADER="Authorization: token ${{ inputs.github-token }}"
         fi
+        ASSET_NAME="dregs-x86_64-unknown-linux-musl.tar.gz"
         if [ "${{ inputs.version }}" = "latest" ]; then
           URL=$(curl -fSL ${AUTH_HEADER:+-H "$AUTH_HEADER"} \
             https://api.github.com/repos/EspressoSystems/dregs/releases \
-            | jq -r '[.[] | .assets[] | select(.name == "dregs-linux-amd64")][0].url')
+            | jq -r --arg name "$ASSET_NAME" '[.[] | .assets[] | select(.name == $name)][0].url')
         else
           URL="https://api.github.com/repos/EspressoSystems/dregs/releases/assets/$(curl -fSL ${AUTH_HEADER:+-H "$AUTH_HEADER"} \
             https://api.github.com/repos/EspressoSystems/dregs/releases/tags/v${{ inputs.version }} \
-            | jq -r '.assets[] | select(.name == "dregs-linux-amd64") | .id')"
+            | jq -r --arg name "$ASSET_NAME" '.assets[] | select(.name == $name) | .id')"
         fi
         if [ -z "$URL" ] || [ "$URL" = "null" ]; then
-          echo "::error::No dregs-linux-amd64 asset found in releases"
+          echo "::error::No $ASSET_NAME asset found in releases"
           exit 1
         fi
-        curl -fL ${AUTH_HEADER:+-H "$AUTH_HEADER"} -H "Accept: application/octet-stream" -o /usr/local/bin/dregs "$URL"
-        chmod +x /usr/local/bin/dregs
+        curl -fL ${AUTH_HEADER:+-H "$AUTH_HEADER"} -H "Accept: application/octet-stream" -o ./dregs-archive.tar.gz "$URL"
+        tar xzf dregs-archive.tar.gz
+        mv dregs /usr/local/bin/dregs && chmod +x /usr/local/bin/dregs
         dregs --version
       shell: bash

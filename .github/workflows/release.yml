@@ -21,13 +21,13 @@ jobs:
       matrix:
         include:
           - os: ubuntu-latest
-            artifact: dregs-linux-amd64
+            artifact: dregs-x86_64-unknown-linux-musl
             target: x86_64-unknown-linux-musl
           - os: ubuntu-24.04-arm
-            artifact: dregs-linux-aarch64
+            artifact: dregs-aarch64-unknown-linux-musl
             target: aarch64-unknown-linux-musl
           - os: macos-latest
-            artifact: dregs-macos-aarch64
+            artifact: dregs-aarch64-apple-darwin
             target: aarch64-apple-darwin
     runs-on: ${{ matrix.os }}
     steps:
@@ -38,11 +38,15 @@ jobs:
       - run: rustup target add ${{ matrix.target }}
       - uses: Swatinem/rust-cache@v2
       - run: cargo build --release --target ${{ matrix.target }}
-      - run: cp target/${{ matrix.target }}/release/dregs ${{ matrix.artifact }}
+      - run: cp target/${{ matrix.target }}/release/dregs dregs
+      - run: tar czf ${{ matrix.artifact }}.tar.gz dregs
+      - run: sha256sum ${{ matrix.artifact }}.tar.gz > ${{ matrix.artifact }}.tar.gz.sha256 || shasum -a 256 ${{ matrix.artifact }}.tar.gz > ${{ matrix.artifact }}.tar.gz.sha256
       - uses: actions/upload-artifact@v7
         with:
           name: ${{ matrix.artifact }}
-          path: ${{ matrix.artifact }}
+          path: |
+            ${{ matrix.artifact }}.tar.gz
+            ${{ matrix.artifact }}.tar.gz.sha256
 
   release:
     needs: build
@@ -52,6 +56,19 @@ jobs:
       contents: write
     steps:
       - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      # TODO: uncomment when license is added and CARGO_REGISTRY_TOKEN secret is set
+      # - name: Publish to crates.io
+      #   run: cargo publish
+      #   env:
+      #     CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+      - name: Generate changelog
+        id: cliff
+        uses: orhun/git-cliff-action@v4
+        with:
+          config: cliff.toml
+          args: --latest --strip header
       - name: Verify Cargo.toml version matches tag
         shell: bash
         run: |
@@ -76,6 +93,6 @@ jobs:
           fi
       - uses: softprops/action-gh-release@v2
         with:
-          generate_release_notes: true
-          files: dregs-*
+          body: ${{ steps.cliff.outputs.content }}
+          files: dregs-*.tar.gz*
           prerelease: ${{ steps.prerelease.outputs.is_prerelease }}

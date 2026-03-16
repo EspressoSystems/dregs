@@ -96,6 +96,8 @@
             buildInputs = [
               rustToolchain
               pkgs.cargo-nextest
+              pkgs.cargo-release
+              pkgs.git-cliff
               pkgs.foundry
               pkgs.just
               pkgs.solc-bin."0.8.30"

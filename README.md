@@ -13,6 +13,30 @@ Generates mutants with [Gambit](https://github.com/Certora/gambit), runs
 
 Download a binary from the [releases page](https://github.com/EspressoSystems/dregs/releases).
 
+### With cargo-binstall
+
+```bash
+cargo binstall dregs
+```
+
+### In GitHub Actions
+
+```yaml
+- uses: taiki-e/install-action@v2
+  with:
+    tool: dregs
+```
+
+For private repos, set `GITHUB_TOKEN`:
+
+```yaml
+- uses: taiki-e/install-action@v2
+  with:
+    tool: dregs
+  env:
+    GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+```
+
 ### From source
 
 ```bash
@@ -36,6 +60,31 @@ just build
 just test
 just cov
 ```
+
+## Releasing
+
+Releases use [cargo-release](https://github.com/crate-ci/cargo-release) and [git-cliff](https://git-cliff.org/).
+
+1. Create a release branch and bump the version:
+
+```bash
+git checkout -b release/vX.Y.Z
+cargo release version <level> --execute
+```
+
+Where `<level>` is `patch`, `minor`, `major`, `rc`, `alpha`, or `beta`.
+
+2. Commit, tag, and push:
+
+```bash
+cargo release --execute
+```
+
+This updates CHANGELOG.md via git-cliff, commits the version bump + changelog, creates a `vX.Y.Z` tag, and pushes. The tag triggers the [release workflow](.github/workflows/release.yml) which builds binaries and creates a GitHub release.
+
+3. Open a PR to merge the release branch into main.
+
+Note: crates.io publishing is disabled pending license addition.
 
 ## Usage
 
