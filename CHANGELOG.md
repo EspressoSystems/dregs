@@ -2,11 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
-## [Unreleased]
+## [0.1.0-rc.5] - 2026-03-16
 
 ### Bug Fixes
 
 - Use per-target forge_args for baseline in test subcommand (#10)
+- Remove invalid [workspace] header from release.toml
 
 ### Features
 
