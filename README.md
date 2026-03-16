@@ -56,10 +56,10 @@ just cov
 Releases use [cargo-release](https://github.com/crate-ci/cargo-release) and [git-cliff](https://git-cliff.org/).
 
 ```bash
-cargo release patch  # or minor, major
+cargo release patch --execute  # or minor, major
 ```
 
-This bumps the version, generates the changelog, commits, tags, and pushes. The [release workflow](.github/workflows/release.yml) triggers on the tag push and attaches build artifacts.
+This bumps the version in `Cargo.toml`, generates the changelog, commits, tags, and pushes. The [release workflow](.github/workflows/release.yml) triggers on the tag push and attaches build artifacts. Without `--execute`, it runs as a dry run.
 
 ## Usage
 
