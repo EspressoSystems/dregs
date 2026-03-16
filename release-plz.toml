@@ -1,5 +1,6 @@
 [workspace]
-# TODO: enable after adding a license and setting CARGO_REGISTRY_TOKEN secret
+# TODO: to publish on crates.io, add license, set CARGO_REGISTRY_TOKEN,
+# set publish = true, cargo_package = true, and add version to gambit dep
 publish = false
 git_only = true
 git_release_enable = true
@@ -8,3 +9,4 @@ git_tag_enable = true
 changelog_update = true
 changelog_config = "cliff.toml"
 semver_check = false
+cargo_package = false
