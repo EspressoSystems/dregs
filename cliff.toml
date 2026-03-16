@@ -40,4 +40,5 @@ commit_parsers = [
 protect_breaking_commits = false
 filter_commits = false
 tag_pattern = "v[0-9].*"
+ignore_tags = "rc"
 sort_commits = "oldest"
