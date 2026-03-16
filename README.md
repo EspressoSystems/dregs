@@ -16,7 +16,7 @@ Download a binary from the [releases page](https://github.com/EspressoSystems/dr
 ### With cargo-binstall
 
 ```bash
-cargo binstall dregs
+cargo binstall --git https://github.com/EspressoSystems/dregs dregs
 ```
 
 ### In GitHub Actions
@@ -25,16 +25,6 @@ cargo binstall dregs
 - uses: taiki-e/install-action@v2
   with:
     tool: dregs
-```
-
-For private repos, set `GITHUB_TOKEN`:
-
-```yaml
-- uses: taiki-e/install-action@v2
-  with:
-    tool: dregs
-  env:
-    GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 ```
 
 ### From source
@@ -177,7 +167,7 @@ dregs inspect ./mutants/manifest.json --results report.json --test --project . -
 
 See [`.github/workflows/example-mutation-test.yml`](.github/workflows/example-mutation-test.yml) for a sharded GitHub Actions workflow using release binaries.
 
-Since the repository is private, `GITHUB_TOKEN` is required to download release assets. The [install-dregs action](.github/actions/install-dregs/action.yml) handles this — pass `github-token: ${{ secrets.GITHUB_TOKEN }}`.
+See the [install-dregs action](.github/actions/install-dregs/action.yml) for installing from releases.
 
 ### Target configuration
 
