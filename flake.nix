@@ -97,7 +97,7 @@
               rustToolchain
               pkgs.cargo-nextest
               pkgs.git-cliff
-              pkgs.release-plz
+              pkgs.cargo-release
               pkgs.foundry
               pkgs.just
               pkgs.solc-bin."0.8.30"

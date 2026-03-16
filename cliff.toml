@@ -39,6 +39,5 @@ commit_parsers = [
 ]
 protect_breaking_commits = false
 filter_commits = false
-# TODO(v0.1.0): add ignore_tags = ".*-rc.*" and regenerate to consolidate RC sections
 tag_pattern = "v[0-9].*"
 sort_commits = "oldest"

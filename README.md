@@ -53,11 +53,13 @@ just cov
 
 ## Releasing
 
-Releases use [release-plz](https://release-plz.ieni.dev/) and [git-cliff](https://git-cliff.org/).
+Releases use [cargo-release](https://github.com/crate-ci/cargo-release) and [git-cliff](https://git-cliff.org/).
 
-On push to main, release-plz opens a release PR with version bump + changelog. Merging the release PR creates a tag + GitHub release. The [release workflow](.github/workflows/release.yml) triggers on the published release and attaches build artifacts.
+```bash
+cargo release patch  # or minor, major
+```
 
-Note: crates.io publishing is disabled pending license addition.
+This bumps the version, generates the changelog, commits, tags, and pushes. The [release workflow](.github/workflows/release.yml) triggers on the tag push and attaches build artifacts.
 
 ## Usage
 

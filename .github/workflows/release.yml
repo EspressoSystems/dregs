@@ -1,8 +1,8 @@
 name: Release
 
 on:
-  release:
-    types: [published]
+  push:
+    tags: ["v*"]
   pull_request:
     paths:
       - "Cargo.toml"
@@ -50,12 +50,20 @@ jobs:
 
   release:
     needs: build
-    if: github.event_name == 'release'
+    if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     permissions:
       contents: write
     steps:
       - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - name: Generate changelog
+        id: cliff
+        uses: orhun/git-cliff-action@v4
+        with:
+          config: cliff.toml
+          args: --latest --strip header
       - name: Verify Cargo.toml version matches tag
         shell: bash
         run: |
@@ -80,5 +88,6 @@ jobs:
           fi
       - uses: softprops/action-gh-release@v2
         with:
+          body: ${{ steps.cliff.outputs.content }}
           files: dregs-*.tar.gz*
           prerelease: ${{ steps.prerelease.outputs.is_prerelease }}
