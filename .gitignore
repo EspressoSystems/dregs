@@ -21,6 +21,7 @@ target
 #.idea/
 
 .*
+!.git/
 !.gitignore
 !.github/
 !.prettierignore
