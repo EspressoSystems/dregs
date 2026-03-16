@@ -20,11 +20,8 @@ target
 #  option (not recommended) you can uncomment the following to ignore the entire idea folder.
 #.idea/
 
-.*
-!.git/
-!.gitignore
-!.github/
-!.prettierignore
+.pre-commit-config.yaml
+.claude/
 
 # Gambit mutation output
 gambit_out/
