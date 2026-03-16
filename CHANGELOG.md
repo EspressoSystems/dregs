@@ -2,11 +2,20 @@
 
 All notable changes to this project will be documented in this file.
 
-## [Unreleased]
+## [0.1.1] - 2026-03-16
 
 ### Bug Fixes
 
 - Disable cargo package check for git-only dependency
+- Isolate git commands from parent process env
+
+### Documentation
+
+- Fix release instructions
+
+### Features
+
+- Add exclude_functions to dregs.toml (#18)
 
 ## [0.1.0] - 2026-03-16
 
