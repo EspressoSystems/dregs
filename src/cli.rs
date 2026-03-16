@@ -346,10 +346,11 @@ fn resolve_targets(
             let resolved_files = resolve_glob_patterns(&tc.files, project_root)?;
             for file in resolved_files {
                 targets.push(FileTarget {
-                    file,
                     contracts: tc.contracts.clone().unwrap_or_default(),
                     functions: tc.functions.clone().unwrap_or_default(),
+                    exclude_functions: tc.exclude_functions.clone().unwrap_or_default(),
                     forge_args: tc.forge_args.clone().unwrap_or_default(),
+                    ..FileTarget::new(file)
                 });
             }
         }
@@ -405,10 +406,8 @@ fn paths_to_targets(files: Vec<PathBuf>, forge_args: &[String]) -> Vec<FileTarge
     files
         .into_iter()
         .map(|file| FileTarget {
-            file,
-            contracts: vec![],
-            functions: vec![],
             forge_args: forge_args.to_vec(),
+            ..FileTarget::new(file)
         })
         .collect()
 }
@@ -1194,6 +1193,7 @@ mod tests {
                 files: vec!["src/Token.sol".to_string()],
                 contracts: Some(vec!["Token".to_string()]),
                 functions: None,
+                exclude_functions: None,
                 forge_args: Some(vec![
                     "--match-contract".to_string(),
                     "TokenTest".to_string(),
@@ -1217,6 +1217,7 @@ mod tests {
                 files: vec!["src/Token.sol".to_string()],
                 contracts: None,
                 functions: None,
+                exclude_functions: None,
                 forge_args: None,
             }],
         };
@@ -1246,6 +1247,7 @@ mod tests {
                 files: vec!["src/Token.sol".to_string()],
                 contracts: None,
                 functions: None,
+                exclude_functions: None,
                 forge_args: None,
             }],
         };
@@ -1280,6 +1282,7 @@ mod tests {
                 files: vec!["src/**/*.sol".to_string()],
                 contracts: None,
                 functions: None,
+                exclude_functions: None,
                 forge_args: None,
             }],
         };
@@ -1298,6 +1301,7 @@ mod tests {
                 files: vec!["nonexistent/**/*.sol".to_string()],
                 contracts: None,
                 functions: None,
+                exclude_functions: None,
                 forge_args: None,
             }],
         };
@@ -1322,6 +1326,7 @@ mod tests {
                 files: vec!["src/Missing.sol".to_string()],
                 contracts: None,
                 functions: None,
+                exclude_functions: None,
                 forge_args: None,
             }],
         };
@@ -1391,18 +1396,8 @@ mod tests {
     #[test]
     fn test_apply_diff_target_filter_with_diff() {
         let targets = vec![
-            FileTarget {
-                file: PathBuf::from("/project/src/A.sol"),
-                contracts: vec![],
-                functions: vec![],
-                forge_args: vec![],
-            },
-            FileTarget {
-                file: PathBuf::from("/project/src/B.sol"),
-                contracts: vec![],
-                functions: vec![],
-                forge_args: vec![],
-            },
+            FileTarget::new(PathBuf::from("/project/src/A.sol")),
+            FileTarget::new(PathBuf::from("/project/src/B.sol")),
         ];
         let diff_ranges = vec![DiffRange {
             file: PathBuf::from("src/A.sol"),
@@ -1415,12 +1410,7 @@ mod tests {
 
     #[test]
     fn test_apply_diff_target_filter_empty_diff() {
-        let targets = vec![FileTarget {
-            file: PathBuf::from("src/A.sol"),
-            contracts: vec![],
-            functions: vec![],
-            forge_args: vec![],
-        }];
+        let targets = vec![FileTarget::new(PathBuf::from("src/A.sol"))];
         let diff_ranges: Vec<DiffRange> = vec![];
         let filtered = apply_diff_target_filter(targets, &diff_ranges, Path::new(""));
         assert!(filtered.is_empty());
@@ -1428,12 +1418,7 @@ mod tests {
 
     #[test]
     fn test_apply_diff_target_filter_no_overlap() {
-        let targets = vec![FileTarget {
-            file: PathBuf::from("/project/src/B.sol"),
-            contracts: vec![],
-            functions: vec![],
-            forge_args: vec![],
-        }];
+        let targets = vec![FileTarget::new(PathBuf::from("/project/src/B.sol"))];
         let diff_ranges = vec![DiffRange {
             file: PathBuf::from("src/A.sol"),
             lines: vec![1..5],
@@ -1599,12 +1584,14 @@ diff --git a/src/Counter.sol b/src/Counter.sol
                     files: vec!["src/A.sol".to_string()],
                     contracts: None,
                     functions: None,
+                    exclude_functions: None,
                     forge_args: Some(vec!["--match-contract".to_string(), "ATest".to_string()]),
                 },
                 TargetConfig {
                     files: vec!["src/B.sol".to_string()],
                     contracts: None,
                     functions: None,
+                    exclude_functions: None,
                     forge_args: Some(vec!["--match-contract".to_string(), "BTest".to_string()]),
                 },
             ],
@@ -1627,12 +1614,14 @@ diff --git a/src/Counter.sol b/src/Counter.sol
                     files: vec!["src/A.sol".to_string()],
                     contracts: None,
                     functions: None,
+                    exclude_functions: None,
                     forge_args: Some(args.clone()),
                 },
                 TargetConfig {
                     files: vec!["src/B.sol".to_string()],
                     contracts: None,
                     functions: None,
+                    exclude_functions: None,
                     forge_args: Some(args),
                 },
             ],
@@ -1652,6 +1641,7 @@ diff --git a/src/Counter.sol b/src/Counter.sol
                 files: vec!["src/A.sol".to_string()],
                 contracts: None,
                 functions: None,
+                exclude_functions: None,
                 forge_args: None,
             }],
         };

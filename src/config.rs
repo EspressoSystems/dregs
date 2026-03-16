@@ -94,6 +94,7 @@ pub(crate) struct TargetConfig {
     pub(crate) files: Vec<String>,
     pub(crate) contracts: Option<Vec<String>>,
     pub(crate) functions: Option<Vec<String>>,
+    pub(crate) exclude_functions: Option<Vec<String>>,
     pub(crate) forge_args: Option<Vec<String>>,
 }
 
@@ -126,6 +127,12 @@ pub(crate) fn parse_dregs_toml(
         if t.files.is_empty() {
             return Err(ConfigError::DregsConfig(format!(
                 "target {} has no files",
+                i + 1
+            )));
+        }
+        if t.functions.is_some() && t.exclude_functions.is_some() {
+            return Err(ConfigError::DregsConfig(format!(
+                "target {} has both functions and exclude_functions (mutually exclusive)",
                 i + 1
             )));
         }
@@ -429,5 +436,50 @@ files = ["src/**/*.sol"]
         let result = parse_dregs_toml(temp.path(), None);
         assert!(result.is_err());
         assert!(result.unwrap_err().to_string().contains("has no files"));
+    }
+
+    #[test]
+    fn test_parse_dregs_toml_exclude_functions_ok() {
+        let temp = TempDir::new().unwrap();
+        temp.child("dregs.toml")
+            .write_str(
+                r#"
+[[target]]
+files = ["src/A.sol"]
+exclude_functions = ["transfer", "approve"]
+"#,
+            )
+            .unwrap();
+
+        let config = parse_dregs_toml(temp.path(), None).unwrap().unwrap();
+        assert_eq!(config.targets.len(), 1);
+        assert_eq!(
+            config.targets[0].exclude_functions,
+            Some(vec!["transfer".to_string(), "approve".to_string()])
+        );
+        assert!(config.targets[0].functions.is_none());
+    }
+
+    #[test]
+    fn test_parse_dregs_toml_mutual_exclusion_fails() {
+        let temp = TempDir::new().unwrap();
+        temp.child("dregs.toml")
+            .write_str(
+                r#"
+[[target]]
+files = ["src/A.sol"]
+functions = ["transfer"]
+exclude_functions = ["approve"]
+"#,
+            )
+            .unwrap();
+
+        let result = parse_dregs_toml(temp.path(), None);
+        assert!(result.is_err());
+        let err = result.unwrap_err().to_string();
+        assert!(
+            err.contains("functions and exclude_functions"),
+            "error should mention mutual exclusion: {err}"
+        );
     }
 }

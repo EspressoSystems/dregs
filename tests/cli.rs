@@ -1656,6 +1656,120 @@ fn test_inspect_with_test_survived() {
 }
 
 #[test]
+fn test_run_with_exclude_functions() {
+    let test_run = common::TestRun::from_fixture("simple");
+    let config = test_run.project_path().join("dregs.toml");
+    std::fs::write(
+        &config,
+        r#"
+[[target]]
+files = ["src/Counter.sol"]
+exclude_functions = ["increment"]
+"#,
+    )
+    .unwrap();
+
+    dregs_cmd()
+        .arg("run")
+        .arg("--project")
+        .arg(test_run.project_path())
+        .arg("--config")
+        .arg(&config)
+        .arg("--mutations")
+        .arg("delete-expression-mutation")
+        .assert()
+        .success()
+        .stderr(predicate::str::contains("Using dregs.toml:"))
+        .stdout(predicate::str::contains("Mutation score"));
+}
+
+#[test]
+fn test_run_with_exclude_functions_typo_warning() {
+    let test_run = common::TestRun::from_fixture("simple");
+    let config = test_run.project_path().join("dregs.toml");
+    std::fs::write(
+        &config,
+        r#"
+[[target]]
+files = ["src/Counter.sol"]
+exclude_functions = ["nonExistent"]
+"#,
+    )
+    .unwrap();
+
+    dregs_cmd()
+        .arg("run")
+        .arg("--project")
+        .arg(test_run.project_path())
+        .arg("--config")
+        .arg(&config)
+        .arg("--mutations")
+        .arg("delete-expression-mutation")
+        .assert()
+        .success()
+        .stderr(predicate::str::contains(
+            "exclude_functions: 'nonExistent' not found",
+        ));
+}
+
+#[test]
+fn test_run_with_functions_and_exclude_functions_conflict() {
+    let test_run = common::TestRun::from_fixture("simple");
+    let config = test_run.project_path().join("dregs.toml");
+    std::fs::write(
+        &config,
+        r#"
+[[target]]
+files = ["src/Counter.sol"]
+functions = ["increment"]
+exclude_functions = ["decrement"]
+"#,
+    )
+    .unwrap();
+
+    dregs_cmd()
+        .arg("run")
+        .arg("--project")
+        .arg(test_run.project_path())
+        .arg("--config")
+        .arg(&config)
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("functions and exclude_functions"));
+}
+
+#[test]
+fn test_generate_with_exclude_functions() {
+    let test_run = common::TestRun::from_fixture("simple");
+    let config = test_run.project_path().join("dregs.toml");
+    std::fs::write(
+        &config,
+        r#"
+[[target]]
+files = ["src/Counter.sol"]
+exclude_functions = ["increment", "decrement"]
+"#,
+    )
+    .unwrap();
+
+    let output_dir = test_run.project_path().join("mutants");
+
+    dregs_cmd()
+        .arg("generate")
+        .arg("--project")
+        .arg(test_run.project_path())
+        .arg("--config")
+        .arg(&config)
+        .arg("--output")
+        .arg(&output_dir)
+        .arg("--mutations")
+        .arg("delete-expression-mutation")
+        .assert()
+        .success()
+        .stderr(predicate::str::contains("Generated"));
+}
+
+#[test]
 fn test_inspect_help() {
     dregs_cmd().arg("inspect").arg("--help").assert().success();
 }

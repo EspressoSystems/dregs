@@ -1,7 +1,12 @@
 use super::{GeneratorConfig, Mutant, MutationGenerator, Result};
 use gambit::{MutateParams, run_mutate};
-use std::collections::HashMap;
+use regex::Regex;
+use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
+use std::sync::LazyLock;
+
+static FUNCTION_RE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"function\s+(\w+)\s*\(").expect("invalid regex"));
 
 #[derive(Default)]
 pub(crate) struct GambitGenerator;
@@ -39,10 +44,32 @@ impl MutationGenerator for GambitGenerator {
                 target.contracts.iter().map(Some).collect()
             };
 
-            let functions = if target.functions.is_empty() {
-                None
-            } else {
+            let functions = if !target.exclude_functions.is_empty() {
+                let source = std::fs::read_to_string(&target.file)?;
+                let all_fns = extract_function_names(&source);
+                let excluded: HashSet<&str> = target
+                    .exclude_functions
+                    .iter()
+                    .map(|s| s.as_str())
+                    .collect();
+                for name in &target.exclude_functions {
+                    if !all_fns.iter().any(|f| f == name) {
+                        eprintln!(
+                            "Warning: exclude_functions: '{}' not found in {}",
+                            name,
+                            target.file.display()
+                        );
+                    }
+                }
+                let remaining: Vec<String> = all_fns
+                    .into_iter()
+                    .filter(|f| !excluded.contains(f.as_str()))
+                    .collect();
+                Some(remaining)
+            } else if !target.functions.is_empty() {
                 Some(target.functions.clone())
+            } else {
+                None
             };
 
             for contract in &contracts {
@@ -142,6 +169,21 @@ impl MutationGenerator for GambitGenerator {
     }
 }
 
+/// Extract function names from Solidity source using regex.
+///
+/// This is a quick-and-dirty approach that may match inside comments or strings.
+/// False positives are harmless (extra names just won't appear in gambit's mutation set).
+/// Better alternatives for the future:
+/// - Shell out to `solc --ast-compact-json` and walk the JSON AST
+/// - Use `tree-sitter-solidity` for proper parsing without compilation
+/// - Fork gambit to expose its internal function-name extraction
+fn extract_function_names(source: &str) -> Vec<String> {
+    FUNCTION_RE
+        .captures_iter(source)
+        .map(|cap| cap[1].to_string())
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::super::FileTarget;
@@ -184,12 +226,7 @@ mod tests {
 
         let config = GeneratorConfig {
             project_root: project_root.clone(),
-            targets: vec![FileTarget {
-                file: project_root.join("src/Counter.sol"),
-                contracts: vec![],
-                functions: vec![],
-                forge_args: vec![],
-            }],
+            targets: vec![FileTarget::new(project_root.join("src/Counter.sol"))],
             operators: vec![],
             output_dir,
             foundry_config: None,
@@ -220,12 +257,7 @@ mod tests {
 
         let config = GeneratorConfig {
             project_root: project_root.clone(),
-            targets: vec![FileTarget {
-                file: project_root.join("src/Counter.sol"),
-                contracts: vec![],
-                functions: vec![],
-                forge_args: vec![],
-            }],
+            targets: vec![FileTarget::new(project_root.join("src/Counter.sol"))],
             operators: vec!["binary-op-mutation".to_string()],
             output_dir,
             foundry_config: None,
@@ -248,12 +280,7 @@ mod tests {
 
         let config = GeneratorConfig {
             project_root: project_root.clone(),
-            targets: vec![FileTarget {
-                file: project_root.join("src/Counter.sol"),
-                contracts: vec![],
-                functions: vec![],
-                forge_args: vec![],
-            }],
+            targets: vec![FileTarget::new(project_root.join("src/Counter.sol"))],
             operators: vec![],
             output_dir,
             foundry_config: Some(FoundryConfig {
@@ -279,10 +306,10 @@ mod tests {
         let config = GeneratorConfig {
             project_root: project_root.clone(),
             targets: vec![FileTarget {
-                file: project_root.join("src/Counter.sol"),
                 contracts: vec!["Counter".to_string()],
                 functions: vec!["increment".to_string()],
                 forge_args: vec!["--match-contract".to_string(), "CounterTest".to_string()],
+                ..FileTarget::new(project_root.join("src/Counter.sol"))
             }],
             operators: vec![],
             output_dir,
@@ -312,10 +339,8 @@ mod tests {
         let config = GeneratorConfig {
             project_root: project_root.clone(),
             targets: vec![FileTarget {
-                file: project_root.join("src/Counter.sol"),
                 contracts: vec!["Counter".to_string(), "NonExistent".to_string()],
-                functions: vec![],
-                forge_args: vec![],
+                ..FileTarget::new(project_root.join("src/Counter.sol"))
             }],
             operators: vec![],
             output_dir,
@@ -339,12 +364,7 @@ mod tests {
 
         let config = GeneratorConfig {
             project_root: project_root.clone(),
-            targets: vec![FileTarget {
-                file: project_root.join("src/Counter.sol"),
-                contracts: vec![],
-                functions: vec![],
-                forge_args: vec![],
-            }],
+            targets: vec![FileTarget::new(project_root.join("src/Counter.sol"))],
             operators: vec![],
             output_dir,
             foundry_config: Some(FoundryConfig {
@@ -356,5 +376,123 @@ mod tests {
 
         let result = generator.generate(&config);
         assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_extract_function_names() {
+        let source = r#"
+pragma solidity ^0.8.0;
+contract Foo {
+    function transfer(address to, uint256 amount) public {}
+    function approve(address spender, uint256 amount) external returns (bool) {}
+    function _internal() internal {}
+}
+"#;
+        let names = extract_function_names(source);
+        assert_eq!(names, vec!["transfer", "approve", "_internal"]);
+    }
+
+    #[test]
+    fn test_generate_with_exclude_functions() {
+        use tempfile::TempDir;
+
+        let generator = GambitGenerator::new();
+        let (_fixture_temp, project_root) = crate::test_utils::fixture_to_temp("simple");
+        let temp_dir = TempDir::new().unwrap();
+        let output_dir = temp_dir.path().join("gambit_out");
+
+        // Generate with exclude_functions = ["increment"]
+        let config_excluded = GeneratorConfig {
+            project_root: project_root.clone(),
+            targets: vec![FileTarget {
+                exclude_functions: vec!["increment".to_string()],
+                ..FileTarget::new(project_root.join("src/Counter.sol"))
+            }],
+            operators: vec![],
+            output_dir: output_dir.clone(),
+            foundry_config: None,
+            skip_validate: false,
+        };
+
+        let mutants_excluded = generator.generate(&config_excluded).unwrap();
+
+        // Generate without any exclusion for comparison
+        let temp_dir2 = TempDir::new().unwrap();
+        let output_dir2 = temp_dir2.path().join("gambit_out");
+        let config_all = GeneratorConfig {
+            project_root: project_root.clone(),
+            targets: vec![FileTarget::new(project_root.join("src/Counter.sol"))],
+            operators: vec![],
+            output_dir: output_dir2,
+            foundry_config: None,
+            skip_validate: false,
+        };
+
+        let mutants_all = generator.generate(&config_all).unwrap();
+        assert!(
+            mutants_excluded.len() < mutants_all.len(),
+            "excluding a function should produce fewer mutants: {} vs {}",
+            mutants_excluded.len(),
+            mutants_all.len()
+        );
+    }
+
+    #[test]
+    fn test_generate_with_exclude_functions_typo_warning() {
+        use tempfile::TempDir;
+
+        let generator = GambitGenerator::new();
+        let (_fixture_temp, project_root) = crate::test_utils::fixture_to_temp("simple");
+        let temp_dir = TempDir::new().unwrap();
+        let output_dir = temp_dir.path().join("gambit_out");
+
+        let config = GeneratorConfig {
+            project_root: project_root.clone(),
+            targets: vec![FileTarget {
+                exclude_functions: vec!["nonExistentFunction".to_string()],
+                ..FileTarget::new(project_root.join("src/Counter.sol"))
+            }],
+            operators: vec![],
+            output_dir,
+            foundry_config: None,
+            skip_validate: false,
+        };
+
+        // Should not error, just warn on stderr
+        let result = generator.generate(&config);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_generate_with_all_functions_excluded() {
+        use tempfile::TempDir;
+
+        let generator = GambitGenerator::new();
+        let (_fixture_temp, project_root) = crate::test_utils::fixture_to_temp("simple");
+        let temp_dir = TempDir::new().unwrap();
+        let output_dir = temp_dir.path().join("gambit_out");
+
+        let config = GeneratorConfig {
+            project_root: project_root.clone(),
+            targets: vec![FileTarget {
+                exclude_functions: vec![
+                    "setNumber".to_string(),
+                    "increment".to_string(),
+                    "decrement".to_string(),
+                ],
+                ..FileTarget::new(project_root.join("src/Counter.sol"))
+            }],
+            operators: vec![],
+            output_dir,
+            foundry_config: None,
+            skip_validate: false,
+        };
+
+        let mutants = generator.generate(&config).unwrap();
+        assert_eq!(
+            mutants.len(),
+            0,
+            "excluding all functions should produce zero mutants"
+        );
     }
 }

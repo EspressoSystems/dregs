@@ -169,12 +169,7 @@ mod tests {
     }
 
     fn make_target(path: &str) -> FileTarget {
-        FileTarget {
-            file: PathBuf::from(path),
-            contracts: vec![],
-            functions: vec![],
-            forge_args: vec![],
-        }
+        FileTarget::new(PathBuf::from(path))
     }
 
     // --- parse_diff_output tests ---

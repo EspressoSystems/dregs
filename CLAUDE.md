@@ -31,7 +31,7 @@ Key flags (see `dregs <subcommand> --help` for all):
 Configuration:
 
 - foundry.toml: auto-detected, reads optimizer/evm_version/remappings; remappings resolved via `forge remappings` if absent; solc version strings ignored (requires binary path)
-- dregs.toml: `[[target]]` with files (glob), contracts, functions, forge_args; mutually exclusive with CLI files/forge_args
+- dregs.toml: `[[target]]` with files (glob), contracts, functions, exclude_functions, forge_args; mutually exclusive with CLI files/forge_args; `functions` and `exclude_functions` are mutually exclusive per target
 - Source comments: `dregs:ignore` (single line), `dregs:ignore-start`/`dregs:ignore-end` (block) to suppress mutations
 
 Diff filtering (`--diff-base` or `--diff-file`):

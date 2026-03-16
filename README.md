@@ -187,6 +187,10 @@ functions = ["deposit", "withdraw"]
 forge_args = ["--match-contract", "VaultTest"]
 
 [[target]]
+files = ["src/Admin.sol"]
+exclude_functions = ["pause", "unpause"]
+
+[[target]]
 files = ["src/utils/**/*.sol"]
 ```
 
@@ -195,6 +199,7 @@ Each target specifies:
 - `files` (required) - Solidity files to mutate, supports glob patterns
 - `contracts` (optional) - filter mutations to these contracts
 - `functions` (optional) - filter mutations to these functions
+- `exclude_functions` (optional) - exclude these functions from mutation (mutually exclusive with `functions`). Preferred over `functions` because new functions added to the contract will automatically be mutation-tested.
 - `forge_args` (optional) - arguments passed to `forge test` for these mutants
 
 When `dregs.toml` exists, CLI file arguments and `-- forge_args` are not allowed (mutually exclusive). Global flags like `--workers`, `--mutations`, `--skip-validate`, and `--fail-under` are always from the CLI.
