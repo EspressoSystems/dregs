@@ -1,8 +1,8 @@
 name: Release
 
 on:
-  push:
-    tags: ["v*"]
+  release:
+    types: [published]
   pull_request:
     paths:
       - "Cargo.toml"
@@ -21,13 +21,13 @@ jobs:
       matrix:
         include:
           - os: ubuntu-latest
-            artifact: dregs-linux-amd64
+            artifact: dregs-x86_64-unknown-linux-musl
             target: x86_64-unknown-linux-musl
           - os: ubuntu-24.04-arm
-            artifact: dregs-linux-aarch64
+            artifact: dregs-aarch64-unknown-linux-musl
             target: aarch64-unknown-linux-musl
           - os: macos-latest
-            artifact: dregs-macos-aarch64
+            artifact: dregs-aarch64-apple-darwin
             target: aarch64-apple-darwin
     runs-on: ${{ matrix.os }}
     steps:
@@ -38,15 +38,19 @@ jobs:
       - run: rustup target add ${{ matrix.target }}
       - uses: Swatinem/rust-cache@v2
       - run: cargo build --release --target ${{ matrix.target }}
-      - run: cp target/${{ matrix.target }}/release/dregs ${{ matrix.artifact }}
+      - run: cp target/${{ matrix.target }}/release/dregs dregs
+      - run: tar czf ${{ matrix.artifact }}.tar.gz dregs
+      - run: sha256sum ${{ matrix.artifact }}.tar.gz > ${{ matrix.artifact }}.tar.gz.sha256 || shasum -a 256 ${{ matrix.artifact }}.tar.gz > ${{ matrix.artifact }}.tar.gz.sha256
       - uses: actions/upload-artifact@v7
         with:
           name: ${{ matrix.artifact }}
-          path: ${{ matrix.artifact }}
+          path: |
+            ${{ matrix.artifact }}.tar.gz
+            ${{ matrix.artifact }}.tar.gz.sha256
 
   release:
     needs: build
-    if: startsWith(github.ref, 'refs/tags/v')
+    if: github.event_name == 'release'
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -76,6 +80,5 @@ jobs:
           fi
       - uses: softprops/action-gh-release@v2
         with:
-          generate_release_notes: true
-          files: dregs-*
+          files: dregs-*.tar.gz*
           prerelease: ${{ steps.prerelease.outputs.is_prerelease }}

@@ -18,8 +18,6 @@ jobs:
       - uses: foundry-rs/foundry-toolchain@v1
       - uses: ./.github/actions/install-solc
       - uses: ./.github/actions/install-dregs
-        with:
-          github-token: ${{ secrets.GITHUB_TOKEN }}
       - run: dregs generate --project tests/fixtures/simple --output ./mutants
       - uses: actions/upload-artifact@v7
         with:
@@ -37,8 +35,6 @@ jobs:
       - uses: foundry-rs/foundry-toolchain@v1
       - uses: ./.github/actions/install-solc
       - uses: ./.github/actions/install-dregs
-        with:
-          github-token: ${{ secrets.GITHUB_TOKEN }}
       - uses: actions/download-artifact@v8
         with:
           name: mutants
@@ -60,8 +56,6 @@ jobs:
     steps:
       - uses: actions/checkout@v6
       - uses: ./.github/actions/install-dregs
-        with:
-          github-token: ${{ secrets.GITHUB_TOKEN }}
       - uses: actions/download-artifact@v8
         with:
           name: mutants

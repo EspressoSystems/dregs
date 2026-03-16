@@ -13,6 +13,20 @@ Generates mutants with [Gambit](https://github.com/Certora/gambit), runs
 
 Download a binary from the [releases page](https://github.com/EspressoSystems/dregs/releases).
 
+### With cargo-binstall
+
+```bash
+cargo binstall --git https://github.com/EspressoSystems/dregs dregs
+```
+
+### In GitHub Actions
+
+```yaml
+- uses: taiki-e/install-action@v2
+  with:
+    tool: dregs
+```
+
 ### From source
 
 ```bash
@@ -36,6 +50,14 @@ just build
 just test
 just cov
 ```
+
+## Releasing
+
+Releases use [release-plz](https://release-plz.ieni.dev/) and [git-cliff](https://git-cliff.org/).
+
+On push to main, release-plz opens a release PR with version bump + changelog. Merging the release PR creates a tag + GitHub release. The [release workflow](.github/workflows/release.yml) triggers on the published release and attaches build artifacts.
+
+Note: crates.io publishing is disabled pending license addition.
 
 ## Usage
 
@@ -145,7 +167,7 @@ dregs inspect ./mutants/manifest.json --results report.json --test --project . -
 
 See [`.github/workflows/example-mutation-test.yml`](.github/workflows/example-mutation-test.yml) for a sharded GitHub Actions workflow using release binaries.
 
-Since the repository is private, `GITHUB_TOKEN` is required to download release assets. The [install-dregs action](.github/actions/install-dregs/action.yml) handles this — pass `github-token: ${{ secrets.GITHUB_TOKEN }}`.
+See the [install-dregs action](.github/actions/install-dregs/action.yml) for installing from releases.
 
 ### Target configuration
 
