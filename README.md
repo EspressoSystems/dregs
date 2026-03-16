@@ -4,8 +4,8 @@
 >
 > Binary crate only. No public Rust API.
 
-Generates mutants with [Gambit](https://github.com/Certora/gambit), runs
-`forge test` against each, and reports which mutants survived.
+Generates mutants with [Gambit](https://github.com/Certora/gambit), runs `forge test` against each,
+and reports which mutants survived.
 
 ## Install
 
@@ -53,13 +53,16 @@ just cov
 
 ## Releasing
 
-Releases use [cargo-release](https://github.com/crate-ci/cargo-release) and [git-cliff](https://git-cliff.org/).
+Releases use [cargo-release](https://github.com/crate-ci/cargo-release) and
+[git-cliff](https://git-cliff.org/).
 
 ```bash
 cargo release patch --execute  # or minor, major
 ```
 
-This bumps the version in `Cargo.toml`, generates the changelog, commits, tags, and pushes. The [release workflow](.github/workflows/release.yml) triggers on the tag push and attaches build artifacts. Without `--execute`, it runs as a dry run.
+This bumps the version in `Cargo.toml`, generates the changelog, commits, tags, and pushes. The
+[release workflow](.github/workflows/release.yml) triggers on the tag push and attaches build
+artifacts. Without `--execute`, it runs as a dry run.
 
 ## Usage
 
@@ -97,7 +100,8 @@ dregs run --project . --diff-base main
 dregs run --project . --diff-base HEAD~1
 ```
 
-Uses merge-base semantics (`git diff main...HEAD`), so on a PR branch this covers exactly the changes introduced by the branch.
+Uses merge-base semantics (`git diff main...HEAD`), so on a PR branch this covers exactly the
+changes introduced by the branch.
 
 Alternatively, provide a pre-computed unified diff via file or stdin:
 
@@ -132,7 +136,8 @@ dregs report ./mutants/manifest.json results-*.json --fail-under 0.8
 
 ### Ignoring mutants
 
-Add `dregs:ignore` comments in your Solidity source to suppress mutations on specific lines or blocks:
+Add `dregs:ignore` comments in your Solidity source to suppress mutations on specific lines or
+blocks:
 
 ```solidity
 function admin() public { // dregs:ignore
@@ -146,7 +151,8 @@ function legacyDeposit() public {
 // dregs:ignore-end
 ```
 
-Ignored mutants are excluded from the score (not counted in numerator or denominator). The count is shown in the summary when non-zero.
+Ignored mutants are excluded from the score (not counted in numerator or denominator). The count is
+shown in the summary when non-zero.
 
 ### Inspecting mutants
 
@@ -167,13 +173,16 @@ dregs inspect ./mutants/manifest.json --results report.json --test --project . -
 
 ### CI
 
-See [`.github/workflows/example-mutation-test.yml`](.github/workflows/example-mutation-test.yml) for a sharded GitHub Actions workflow using release binaries.
+See [`.github/workflows/example-mutation-test.yml`](.github/workflows/example-mutation-test.yml) for
+a sharded GitHub Actions workflow using release binaries.
 
-See the [install-dregs action](.github/actions/install-dregs/action.yml) for installing from releases.
+See the [install-dregs action](.github/actions/install-dregs/action.yml) for installing from
+releases.
 
 ### Target configuration
 
-Create a `dregs.toml` in your project root to pair contracts with their tests. See [`tests/fixtures/simple/dregs.toml`](tests/fixtures/simple/dregs.toml) for a working example.
+Create a `dregs.toml` in your project root to pair contracts with their tests. See
+[`tests/fixtures/simple/dregs.toml`](tests/fixtures/simple/dregs.toml) for a working example.
 
 ```toml
 [[target]]
@@ -199,10 +208,14 @@ Each target specifies:
 - `files` (required) - Solidity files to mutate, supports glob patterns
 - `contracts` (optional) - filter mutations to these contracts
 - `functions` (optional) - filter mutations to these functions
-- `exclude_functions` (optional) - exclude these functions from mutation (mutually exclusive with `functions`). Preferred over `functions` because new functions added to the contract will automatically be mutation-tested.
+- `exclude_functions` (optional) - exclude these functions from mutation (mutually exclusive with
+  `functions`). Preferred over `functions` because new functions added to the contract will
+  automatically be mutation-tested.
 - `forge_args` (optional) - arguments passed to `forge test` for these mutants
 
-When `dregs.toml` exists, CLI file arguments and `-- forge_args` are not allowed (mutually exclusive). Global flags like `--workers`, `--mutations`, `--skip-validate`, and `--fail-under` are always from the CLI.
+When `dregs.toml` exists, CLI file arguments and `-- forge_args` are not allowed (mutually
+exclusive). Global flags like `--workers`, `--mutations`, `--skip-validate`, and `--fail-under` are
+always from the CLI.
 
 Use `--config` to specify a custom config path:
 
