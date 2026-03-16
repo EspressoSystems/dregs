@@ -23,6 +23,7 @@ target
 .*
 !.gitignore
 !.github/
+!.prettierignore
 
 # Gambit mutation output
 gambit_out/
