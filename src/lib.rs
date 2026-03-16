@@ -27,11 +27,15 @@ mod test_utils {
     }
 
     fn git(dir: &Path, args: &[&str]) -> std::process::Output {
+        // Isolate from parent git process (e.g. pre-commit hook sets GIT_INDEX_FILE)
         let output = Command::new("git")
             .args(args)
             .current_dir(dir)
             .env("GIT_CONFIG_NOSYSTEM", "1")
             .env("GIT_CONFIG_GLOBAL", "/dev/null")
+            .env_remove("GIT_INDEX_FILE")
+            .env_remove("GIT_DIR")
+            .env_remove("GIT_WORK_TREE")
             .output()
             .expect("git command failed");
         assert!(output.status.success(), "git {:?} failed", args);
