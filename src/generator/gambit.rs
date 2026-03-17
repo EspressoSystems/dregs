@@ -107,7 +107,7 @@ impl MutationGenerator for GambitGenerator {
                     solc_evm_version: foundry.and_then(|f| f.evm_version.clone()),
                     functions: functions.clone(),
                     contract: contract.cloned(),
-                    solc_base_path: None,
+                    solc_base_path: Some(config.project_root.to_string_lossy().to_string()),
                     solc_allow_paths: None,
                     solc_include_path: None,
                     solc_remappings: foundry
@@ -489,6 +489,42 @@ contract Foo {
         // Should not error, just warn on stderr
         let result = generator.generate(&config);
         assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_generate_with_imports_and_remappings() {
+        use crate::config::FoundryConfig;
+        use tempfile::TempDir;
+
+        let generator = GambitGenerator::new();
+        let (_fixture_temp, project_root) = crate::test_utils::fixture_to_temp("with-imports");
+        let temp_dir = TempDir::new().unwrap();
+        let output_dir = temp_dir.path().join("gambit_out");
+
+        let config = GeneratorConfig {
+            project_root: project_root.clone(),
+            targets: vec![FileTarget::new(project_root.join("src/Adder.sol"))],
+            operators: vec![],
+            output_dir,
+            foundry_config: Some(FoundryConfig {
+                remappings: vec!["@mylib/=lib/mylib/src/".to_string()],
+                ..Default::default()
+            }),
+            skip_validate: false,
+        };
+
+        let result = generator.generate(&config);
+        assert!(
+            result.is_ok(),
+            "generation with remappings should succeed: {:?}",
+            result.err()
+        );
+
+        let mutants = result.unwrap();
+        assert!(
+            !mutants.is_empty(),
+            "should generate mutants for contract with imports"
+        );
     }
 
     #[test]
