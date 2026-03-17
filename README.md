@@ -7,6 +7,34 @@
 Generates mutants with [Gambit](https://github.com/Certora/gambit), runs `forge test` against each, and reports which
 mutants survived.
 
+<!-- markdown-toc start - Don't edit this section. Run M-x markdown-toc-refresh-toc -->
+
+**Table of Contents**
+
+- [dregs](#dregs)
+  - [Install](#install)
+    - [From GitHub releases](#from-github-releases)
+    - [With cargo-binstall](#with-cargo-binstall)
+    - [In GitHub Actions](#in-github-actions)
+    - [From source](#from-source)
+    - [With nix](#with-nix)
+    - [In a nix flake dev shell](#in-a-nix-flake-dev-shell)
+  - [Development](#development)
+  - [Releasing](#releasing)
+  - [Usage](#usage)
+    - [Simple run](#simple-run)
+    - [Parallel execution](#parallel-execution)
+    - [Diff-based filtering](#diff-based-filtering)
+    - [Sharding (generate once, test in parallel jobs)](#sharding-generate-once-test-in-parallel-jobs)
+    - [Ignoring mutants](#ignoring-mutants)
+    - [Inspecting mutants](#inspecting-mutants)
+    - [CI](#ci)
+    - [Target configuration](#target-configuration)
+      - [Test commands](#test-commands)
+    - [Passing arguments to forge](#passing-arguments-to-forge)
+
+<!-- markdown-toc end -->
+
 ## Install
 
 ### From GitHub releases
@@ -40,6 +68,27 @@ Requires `forge` and `solc` in PATH.
 ```bash
 nix run github:EspressoSystems/dregs -- run --project .
 ```
+
+### In a nix flake dev shell
+
+Use the provided template as a starting point:
+
+```bash
+nix flake init -t github:EspressoSystems/dregs
+```
+
+Or add the overlay to an existing flake:
+
+```nix
+{
+  inputs.dregs.url = "github:EspressoSystems/dregs";
+
+  # Add dregs.overlays.default to your overlays, then use pkgs.dregs
+}
+```
+
+The overlay provides `dregs` (wrapped with bundled foundry) and `dregs-unwrapped` (bare binary, bring your own
+`forge`/`solc`). Use `dregs-unwrapped` when you already have foundry in your environment.
 
 ## Development
 
@@ -224,12 +273,10 @@ Each target can specify one or more test commands. Commands run in order; a muta
 [[target]]
 files = ["src/Token.sol"]
 
-# Foundry test with extra args (--json added automatically)
 [[target.test_commands]]
 kind = "foundry"
 args = ["--match-contract", "TokenTest"]
 
-# Custom command (exit code only, no killed_by info)
 [[target.test_commands]]
 kind = "custom"
 command = ["npx", "hardhat", "test"]

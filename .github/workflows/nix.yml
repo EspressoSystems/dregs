@@ -25,3 +25,10 @@ jobs:
           extraPullNames: nix-community
           skipPush: ${{ github.actor == 'dependabot[bot]' }}
       - run: nix build
+      - name: Test overlay
+        run: |
+          tmpdir=$(mktemp -d)
+          cd "$tmpdir"
+          nix flake init -t "$GITHUB_WORKSPACE"
+          nix flake lock --override-input dregs "$GITHUB_WORKSPACE"
+          nix develop --command dregs --version
