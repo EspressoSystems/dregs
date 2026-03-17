@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.2.0] - 2026-03-17
+
+### Features
+
+- Add custom test command support (#22)
+- Add flake overlay and template
+
 ## [0.1.1] - 2026-03-16
 
 ### Bug Fixes
