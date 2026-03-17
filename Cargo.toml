@@ -1,6 +1,6 @@
 [package]
 name = "dregs"
-version = "0.1.1"
+version = "0.2.0"
 edition = "2024"
 description = "Solidity mutation testing runner for Foundry projects"
 repository = "https://github.com/EspressoSystems/dregs"
