@@ -1,4 +1,4 @@
-use crate::config::FoundryConfig;
+use crate::config::{FoundryConfig, TestCommand};
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use thiserror::Error;
@@ -26,7 +26,7 @@ pub(crate) struct Mutant {
     pub(crate) replacement: String,
     pub(crate) line: u32,
     #[serde(default)]
-    pub(crate) forge_args: Vec<String>,
+    pub(crate) test_commands: Vec<TestCommand>,
 }
 
 /// Invariant: `functions` and `exclude_functions` are mutually exclusive (enforced in config parsing).
@@ -36,7 +36,7 @@ pub(crate) struct FileTarget {
     pub(crate) contracts: Vec<String>,
     pub(crate) functions: Vec<String>,
     pub(crate) exclude_functions: Vec<String>,
-    pub(crate) forge_args: Vec<String>,
+    pub(crate) test_commands: Vec<TestCommand>,
 }
 
 impl FileTarget {
@@ -77,7 +77,7 @@ mod tests {
             original: "+".to_string(),
             replacement: "-".to_string(),
             line: 12,
-            forge_args: vec![],
+            test_commands: vec![],
         };
         assert_eq!(mutant.id, 1);
         assert_eq!(mutant.operator, "binary-op-mutation");

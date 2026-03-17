@@ -1197,6 +1197,37 @@ contract FailingTest {
         .stderr(predicate::str::contains("baseline tests failed"));
 }
 
+#[test]
+fn test_run_skip_baseline() {
+    // Same setup as test_run_baseline_failure: add a failing test
+    let test_run = common::TestRun::from_fixture("simple");
+    std::fs::write(
+        test_run.project_path().join("test/Failing.t.sol"),
+        r#"// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.30;
+contract FailingTest {
+    function test_AlwaysFails() public pure {
+        assert(false);
+    }
+}
+"#,
+    )
+    .unwrap();
+
+    // With --skip-baseline, we bypass the failing baseline and proceed to mutation testing
+    dregs_cmd()
+        .arg("run")
+        .arg("--project")
+        .arg(test_run.project_path())
+        .arg("--mutations")
+        .arg("delete-expression-mutation")
+        .arg("--skip-baseline")
+        .assert()
+        .success()
+        .stderr(predicate::str::contains("baseline tests failed").not())
+        .stderr(predicate::str::contains("Generating mutants"));
+}
+
 // --- Workers validation ---
 
 #[test]
@@ -1772,4 +1803,248 @@ exclude_functions = ["increment", "decrement"]
 #[test]
 fn test_inspect_help() {
     dregs_cmd().arg("inspect").arg("--help").assert().success();
+}
+
+// --- Custom test command tests ---
+
+#[test]
+fn test_run_with_custom_test_command() {
+    let test_run = common::TestRun::from_fixture("simple");
+    let config_path = test_run.project_path().join("dregs.toml");
+    std::fs::write(
+        &config_path,
+        r#"[[target]]
+files = ["src/Counter.sol"]
+
+[[target.test_commands]]
+kind = "foundry"
+args = ["--match-contract", "CounterTest"]
+
+[[target.test_commands]]
+kind = "custom"
+command = ["forge", "test", "--match-contract", "CounterTest"]
+"#,
+    )
+    .unwrap();
+
+    dregs_cmd()
+        .arg("run")
+        .arg("--project")
+        .arg(test_run.project_path())
+        .arg("--config")
+        .arg(&config_path)
+        .arg("--mutations")
+        .arg("delete-expression-mutation")
+        .assert()
+        .success()
+        .stderr(predicate::str::contains("Baseline custom test passed"))
+        .stdout(predicate::str::contains("Mutation score"));
+}
+
+#[test]
+fn test_run_with_custom_command_only() {
+    let test_run = common::TestRun::from_fixture("simple");
+    let config_path = test_run.project_path().join("dregs.toml");
+    std::fs::write(
+        &config_path,
+        r#"[[target]]
+files = ["src/Counter.sol"]
+
+[[target.test_commands]]
+kind = "custom"
+command = ["forge", "test"]
+"#,
+    )
+    .unwrap();
+
+    dregs_cmd()
+        .arg("run")
+        .arg("--project")
+        .arg(test_run.project_path())
+        .arg("--config")
+        .arg(&config_path)
+        .arg("--mutations")
+        .arg("delete-expression-mutation")
+        .assert()
+        .success()
+        .stderr(predicate::str::contains("Running baseline custom test"))
+        .stderr(predicate::str::contains("Baseline custom test passed"))
+        .stdout(predicate::str::contains("Mutation score"));
+}
+
+#[test]
+fn test_run_custom_command_baseline_failure() {
+    let test_run = common::TestRun::from_fixture("simple");
+    let config_path = test_run.project_path().join("dregs.toml");
+    std::fs::write(
+        &config_path,
+        r#"[[target]]
+files = ["src/Counter.sol"]
+
+[[target.test_commands]]
+kind = "custom"
+command = ["sh", "-c", "exit 1"]
+"#,
+    )
+    .unwrap();
+
+    dregs_cmd()
+        .arg("run")
+        .arg("--project")
+        .arg(test_run.project_path())
+        .arg("--config")
+        .arg(&config_path)
+        .arg("--mutations")
+        .arg("delete-expression-mutation")
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("baseline custom test failed"));
+}
+
+#[test]
+fn test_run_cli_forge_args_with_test_commands_config_fails() {
+    let test_run = common::TestRun::from_fixture("simple");
+    let config_path = test_run.project_path().join("dregs.toml");
+    std::fs::write(
+        &config_path,
+        r#"[[target]]
+files = ["src/Counter.sol"]
+
+[[target.test_commands]]
+kind = "foundry"
+args = ["--match-contract", "CounterTest"]
+"#,
+    )
+    .unwrap();
+
+    dregs_cmd()
+        .arg("run")
+        .arg("--project")
+        .arg(test_run.project_path())
+        .arg("--config")
+        .arg(&config_path)
+        .arg("--")
+        .arg("--match-test")
+        .arg("Increment")
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains(
+            "do not pass files or -- forge_args",
+        ));
+}
+
+#[test]
+fn test_generate_test_report_pipeline_with_custom_command() {
+    let test_run = common::TestRun::from_fixture("simple");
+    let config_path = test_run.project_path().join("dregs.toml");
+    std::fs::write(
+        &config_path,
+        r#"[[target]]
+files = ["src/Counter.sol"]
+
+[[target.test_commands]]
+kind = "custom"
+command = ["forge", "test"]
+"#,
+    )
+    .unwrap();
+
+    let mutants_dir = test_run.project_path().join("mutants_out");
+    let results_path = test_run.project_path().join("results.json");
+
+    // Generate
+    dregs_cmd()
+        .arg("generate")
+        .arg("--project")
+        .arg(test_run.project_path())
+        .arg("--config")
+        .arg(&config_path)
+        .arg("--mutations")
+        .arg("delete-expression-mutation")
+        .arg("--output")
+        .arg(&mutants_dir)
+        .assert()
+        .success();
+
+    let manifest_path = mutants_dir.join("manifest.json");
+    assert!(manifest_path.exists());
+
+    // Verify manifest contains test_commands
+    let content = std::fs::read_to_string(&manifest_path).unwrap();
+    assert!(
+        content.contains("\"kind\": \"custom\""),
+        "manifest should contain custom test command, got: {content}"
+    );
+
+    // Test
+    dregs_cmd()
+        .arg("test")
+        .arg("--manifest")
+        .arg(&manifest_path)
+        .arg("--project")
+        .arg(test_run.project_path())
+        .arg("--output")
+        .arg(&results_path)
+        .assert()
+        .success();
+
+    assert!(results_path.exists());
+
+    // Report
+    dregs_cmd()
+        .arg("report")
+        .arg(&manifest_path)
+        .arg(&results_path)
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Mutation score"));
+}
+
+#[test]
+fn test_inspect_with_custom_command_test() {
+    let test_run = common::TestRun::from_fixture("simple");
+    let config_path = test_run.project_path().join("dregs.toml");
+    std::fs::write(
+        &config_path,
+        r#"[[target]]
+files = ["src/Counter.sol"]
+
+[[target.test_commands]]
+kind = "custom"
+command = ["forge", "test"]
+"#,
+    )
+    .unwrap();
+
+    let mutants_dir = test_run.project_path().join("mutants_out");
+
+    // Generate with custom command config
+    dregs_cmd()
+        .arg("generate")
+        .arg("--project")
+        .arg(test_run.project_path())
+        .arg("--config")
+        .arg(&config_path)
+        .arg("--mutations")
+        .arg("delete-expression-mutation")
+        .arg("--output")
+        .arg(&mutants_dir)
+        .assert()
+        .success();
+
+    let manifest_path = mutants_dir.join("manifest.json");
+
+    // Inspect with --test should use custom command from manifest
+    dregs_cmd()
+        .arg("inspect")
+        .arg(&manifest_path)
+        .arg("--ids")
+        .arg("1")
+        .arg("--test")
+        .arg("--project")
+        .arg(test_run.project_path())
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Testing"))
+        .stdout(predicate::str::contains("KILLED").or(predicate::str::contains("SURVIVED")));
 }

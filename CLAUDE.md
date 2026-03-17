@@ -23,6 +23,7 @@ Key flags (see `dregs <subcommand> --help` for all):
 - `--mutations OPS` - comma-separated mutation operators (run, generate)
 - `--timeout SECS` - per mutant (run)
 - `--skip-validate` - via_ir workaround (run, test)
+- `--skip-baseline` - skip baseline test validation (run, test)
 - `--config PATH` - dregs.toml path (run, generate)
 - `--ids IDS` - comma-separated mutant IDs (inspect)
 - `--results PATH` - results file to filter survived mutants (inspect)
@@ -33,8 +34,11 @@ Configuration:
 
 - foundry.toml: auto-detected, reads optimizer/evm_version/remappings; remappings resolved via `forge remappings` if
   absent; solc version strings ignored (requires binary path)
-- dregs.toml: `[[target]]` with files (glob), contracts, functions, exclude_functions, forge_args; mutually exclusive
+- dregs.toml: `[[target]]` with files (glob), contracts, functions, exclude_functions, test_commands; mutually exclusive
   with CLI files/forge_args; `functions` and `exclude_functions` are mutually exclusive per target
+- test_commands: `[[target.test_commands]]` with `kind` discriminator: `foundry` (with optional `args`) or `custom`
+  (with required `command`, optional `symlinks`); no test_commands = implicit foundry with no args; mutant killed if ANY
+  command fails
 - Source comments: `dregs:ignore` (single line), `dregs:ignore-start`/`dregs:ignore-end` (block) to suppress mutations
 
 Diff filtering (`--diff-base` or `--diff-file`):
@@ -60,7 +64,9 @@ Execution:
 
 - Fail-fast on first test failure (mutant killed)
 - Baseline test validation before mutation testing
-- Temp workspace per mutant for isolation
+- Temp workspace per mutant for isolation (full copy, only `.git` and `gambit_out` skipped); directories listed in
+  `symlinks` are symlinked instead of copied
+- Baseline tests also run in a temp workspace to catch setup issues early
 
 ## Future Work
 
@@ -118,7 +124,7 @@ src/
     gambit.rs      - Gambit implementation with contract/function filters
   manifest.rs      - manifest read/write for CI sharding
   partition.rs     - round-robin partition for CI sharding
-  runner.rs        - test runner (forge test)
+  runner.rs        - test runner (forge test + custom commands)
   report.rs        - results reporting, merge partial results, markdown format
 .github/
   actions/
@@ -141,4 +147,5 @@ src/
 - **Forge as subprocess**: forge internals not designed for library use
 - **thiserror for internal errors**: typed errors for testable code paths
 - **anyhow at boundaries**: main.rs and cli.rs orchestration only; internal modules use thiserror
-- **Per-mutant forge_args**: each mutant carries forge_args from target config
+- **Per-mutant test_commands**: each mutant carries test_commands from target config; supports foundry (parsed JSON
+  output for killed_by) and custom (exit-code only) command types
