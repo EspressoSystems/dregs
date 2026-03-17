@@ -2,4 +2,7 @@
 files = ["src/Counter.sol"]
 contracts = ["Counter"]
 exclude_functions = ["increment"]
-forge_args = ["--match-contract", "CounterTest"]
+
+[[target.test_commands]]
+kind = "foundry"
+args = ["--match-contract", "CounterTest"]

@@ -164,7 +164,7 @@ mod tests {
             original: "+".to_string(),
             replacement: "-".to_string(),
             line,
-            forge_args: vec![],
+            test_commands: vec![],
         }
     }
 

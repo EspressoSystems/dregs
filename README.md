@@ -185,12 +185,18 @@ Create a `dregs.toml` in your project root to pair contracts with their tests. S
 [[target]]
 files = ["src/Token.sol"]
 contracts = ["Token"]
-forge_args = ["--match-contract", "TokenTest"]
+
+[[target.test_commands]]
+kind = "foundry"
+args = ["--match-contract", "TokenTest"]
 
 [[target]]
 files = ["src/Vault.sol"]
 functions = ["deposit", "withdraw"]
-forge_args = ["--match-contract", "VaultTest"]
+
+[[target.test_commands]]
+kind = "foundry"
+args = ["--match-contract", "VaultTest"]
 
 [[target]]
 files = ["src/Admin.sol"]
@@ -207,7 +213,35 @@ Each target specifies:
 - `functions` (optional) - filter mutations to these functions
 - `exclude_functions` (optional) - exclude these functions from mutation (mutually exclusive with `functions`).
   Preferred over `functions` because new functions added to the contract will automatically be mutation-tested.
-- `forge_args` (optional) - arguments passed to `forge test` for these mutants
+- `test_commands` (optional) - test commands to run for these mutants (see below)
+
+#### Test commands
+
+Each target can specify one or more test commands. Commands run in order; a mutant is killed if any command fails
+(fail-fast).
+
+```toml
+[[target]]
+files = ["src/Token.sol"]
+
+# Foundry test with extra args (--json added automatically)
+[[target.test_commands]]
+kind = "foundry"
+args = ["--match-contract", "TokenTest"]
+
+# Custom command (exit code only, no killed_by info)
+[[target.test_commands]]
+kind = "custom"
+command = ["npx", "hardhat", "test"]
+symlinks = ["node_modules"]
+```
+
+- **No test_commands** = implicit `forge test` with no extra args
+- **foundry**: runs `forge test --json` with the given args; output parsed for `killed_by`
+- **custom**: runs the command as-is; non-zero exit = mutant killed, `killed_by` = None
+- Each mutant runs in a copy of the project (only `.git` and `gambit_out` skipped); directories listed in `symlinks` are
+  symlinked instead of copied
+- CLI `-- <forge_args>` is not allowed when `dregs.toml` has `test_commands`
 
 When `dregs.toml` exists, CLI file arguments and `-- forge_args` are not allowed (mutually exclusive). Global flags like
 `--workers`, `--mutations`, `--skip-validate`, and `--fail-under` are always from the CLI.

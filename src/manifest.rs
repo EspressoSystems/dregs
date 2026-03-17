@@ -104,7 +104,7 @@ mod tests {
                 original: "+".to_string(),
                 replacement: "-".to_string(),
                 line: 12,
-                forge_args: vec![],
+                test_commands: vec![],
             },
             Mutant {
                 id: 2,
@@ -115,7 +115,7 @@ mod tests {
                 original: "require(true)".to_string(),
                 replacement: "require(false)".to_string(),
                 line: 15,
-                forge_args: vec![],
+                test_commands: vec![],
             },
         ]
     }
@@ -205,6 +205,75 @@ mod tests {
 
         let result = Manifest::read(&manifest_path);
         pretty_assertions::assert_matches!(result, Err(ManifestError::MissingMutantFile(_)));
+    }
+
+    #[test]
+    fn backward_compat_no_test_commands() {
+        let json = serde_json::json!({
+            "version": 1,
+            "mutants": [{
+                "id": 1,
+                "source_path": "/project/src/Counter.sol",
+                "relative_source_path": "src/Counter.sol",
+                "mutant_path": "mutants/1/Counter.sol",
+                "operator": "op",
+                "original": "a",
+                "replacement": "b",
+                "line": 1
+            }]
+        });
+
+        let manifest: Manifest = serde_json::from_value(json).unwrap();
+        assert!(manifest.mutants[0].test_commands.is_empty());
+    }
+
+    #[test]
+    fn roundtrip_with_test_commands() {
+        use crate::config::TestCommand;
+
+        let mutant_dir = TempDir::new().unwrap();
+        mutant_dir
+            .child("1.sol")
+            .write_str("mutant content")
+            .unwrap();
+        let output_dir = TempDir::new().unwrap();
+
+        let mutants = vec![Mutant {
+            id: 1,
+            source_path: PathBuf::from("/project/src/Counter.sol"),
+            relative_source_path: PathBuf::from("src/Counter.sol"),
+            mutant_path: mutant_dir.path().join("1.sol"),
+            operator: "binary-op-mutation".to_string(),
+            original: "+".to_string(),
+            replacement: "-".to_string(),
+            line: 12,
+            test_commands: vec![
+                TestCommand::Foundry {
+                    args: vec!["--match-contract".to_string(), "FooTest".to_string()],
+                },
+                TestCommand::Custom {
+                    command: vec!["yarn".to_string(), "test".to_string()],
+                    symlinks: vec!["node_modules".to_string()],
+                },
+            ],
+        }];
+
+        Manifest::write(output_dir.path(), mutants, vec![]).unwrap();
+        let loaded = Manifest::read(&output_dir.path().join("manifest.json")).unwrap();
+
+        assert_eq!(loaded.mutants.len(), 1);
+        assert_eq!(
+            loaded.mutants[0].test_commands,
+            vec![
+                TestCommand::Foundry {
+                    args: vec!["--match-contract".to_string(), "FooTest".to_string()],
+                },
+                TestCommand::Custom {
+                    command: vec!["yarn".to_string(), "test".to_string()],
+                    symlinks: vec!["node_modules".to_string()],
+                },
+            ]
+        );
     }
 
     #[test]

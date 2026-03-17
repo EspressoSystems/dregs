@@ -1,4 +1,5 @@
 use super::{GeneratorConfig, Mutant, MutationGenerator, Result};
+use crate::config::TestCommand;
 use gambit::{MutateParams, run_mutate};
 use regex::Regex;
 use std::collections::{HashMap, HashSet};
@@ -31,12 +32,12 @@ impl MutationGenerator for GambitGenerator {
         }
 
         let mut mutate_params_list = Vec::new();
-        let mut file_forge_args: HashMap<PathBuf, Vec<String>> = HashMap::new();
+        let mut file_test_commands: HashMap<PathBuf, Vec<TestCommand>> = HashMap::new();
 
         for target in &config.targets {
             // Canonicalize to handle path representation differences between our input and gambit output
             let key = target.file.canonicalize().unwrap_or(target.file.clone());
-            file_forge_args.insert(key, target.forge_args.clone());
+            file_test_commands.insert(key, target.test_commands.clone());
 
             let contracts: Vec<Option<&String>> = if target.contracts.is_empty() {
                 vec![None]
@@ -118,11 +119,35 @@ impl MutationGenerator for GambitGenerator {
             }
         }
 
+        for (i, params) in mutate_params_list.iter().enumerate() {
+            let file = params.filename.as_deref().unwrap_or("?");
+            let contract = params.contract.as_deref().unwrap_or("*");
+            let funcs = params
+                .functions
+                .as_ref()
+                .map(|f| f.join(", "))
+                .unwrap_or_else(|| "*".to_string());
+            eprintln!(
+                "  gambit call {}: file={}, contract={}, functions=[{}]",
+                i + 1,
+                file,
+                contract,
+                funcs
+            );
+        }
+
         let gambit_results = run_mutate(mutate_params_list)
             .map_err(|e| super::GeneratorError::Generation(e.to_string()))?;
 
         let mut mutants = Vec::new();
         let mut mutant_id = 1u32;
+
+        for (outdir, gambit_mutants) in &gambit_results {
+            let count = gambit_mutants.len();
+            if count == 0 {
+                eprintln!("  gambit returned 0 mutants (outdir: {})", outdir);
+            }
+        }
 
         for (_outdir, gambit_mutants) in gambit_results {
             for gambit_mutant in gambit_mutants {
@@ -151,7 +176,7 @@ impl MutationGenerator for GambitGenerator {
                     original: gambit_mutant.orig.clone(),
                     replacement: gambit_mutant.repl.clone(),
                     line: line as u32,
-                    forge_args: file_forge_args
+                    test_commands: file_test_commands
                         .get(
                             &source_path
                                 .canonicalize()
@@ -303,12 +328,15 @@ mod tests {
         let temp_dir = TempDir::new().unwrap();
         let output_dir = temp_dir.path().join("gambit_out");
 
+        let test_cmds = vec![TestCommand::Foundry {
+            args: vec!["--match-contract".to_string(), "CounterTest".to_string()],
+        }];
         let config = GeneratorConfig {
             project_root: project_root.clone(),
             targets: vec![FileTarget {
                 contracts: vec!["Counter".to_string()],
                 functions: vec!["increment".to_string()],
-                forge_args: vec!["--match-contract".to_string(), "CounterTest".to_string()],
+                test_commands: test_cmds.clone(),
                 ..FileTarget::new(project_root.join("src/Counter.sol"))
             }],
             operators: vec![],
@@ -323,7 +351,7 @@ mod tests {
         let mutants = result.unwrap();
         assert!(!mutants.is_empty());
         for mutant in &mutants {
-            assert_eq!(mutant.forge_args, vec!["--match-contract", "CounterTest"]);
+            assert_eq!(mutant.test_commands, test_cmds);
         }
     }
 

@@ -9,8 +9,8 @@ use std::time::Instant;
 use std::collections::HashSet;
 
 use crate::config::{
-    DregsConfig, FoundryConfig, find_project_root, parse_dregs_toml, parse_foundry_toml,
-    resolve_remappings,
+    DregsConfig, FoundryConfig, TestCommand, find_project_root, parse_dregs_toml,
+    parse_foundry_toml, resolve_remappings,
 };
 use crate::diff::{
     DiffRange, filter_mutants, filter_targets_by_diff, parse_diff_from_reader, parse_git_diff,
@@ -21,7 +21,10 @@ use crate::ignore::filter_ignored_mutants;
 use crate::manifest::Manifest;
 use crate::partition::Partition;
 use crate::report::{Report, read_survived_ids};
-use crate::runner::{TestResult, list_forge_tests, run_forge_test_baseline, run_mutant};
+use crate::runner::{
+    TestResult, Workspace, list_forge_tests, run_custom_test_baseline, run_forge_test_baseline,
+    run_mutant,
+};
 
 pub(crate) fn parse_workers(s: &str) -> std::result::Result<usize, String> {
     let n: usize = s.parse().map_err(|e| format!("{e}"))?;
@@ -90,6 +93,9 @@ pub(crate) enum Commands {
             help = "Skip gambit's mutant validation (workaround for via_ir projects)"
         )]
         skip_validate: bool,
+
+        #[arg(long, help = "Skip baseline test validation before mutation testing")]
+        skip_baseline: bool,
 
         #[arg(short, long, default_value = "1", help = "Number of parallel workers", value_parser = parse_workers)]
         workers: usize,
@@ -178,6 +184,9 @@ pub(crate) enum Commands {
         #[arg(long, help = "Partition spec (e.g., slice:1/4)")]
         partition: Option<String>,
 
+        #[arg(long, help = "Skip baseline test validation before mutation testing")]
+        skip_baseline: bool,
+
         #[arg(short, long, help = "Output results path (JSON)")]
         output: Option<PathBuf>,
 
@@ -254,6 +263,7 @@ pub fn run(cli: Cli) -> Result<()> {
             mutations,
             timeout: _timeout,
             skip_validate,
+            skip_baseline,
             workers,
             diff_base,
             diff_file,
@@ -267,6 +277,7 @@ pub fn run(cli: Cli) -> Result<()> {
                 fail_under,
                 mutations,
                 skip_validate,
+                skip_baseline,
                 workers,
                 diff_base,
                 diff_file,
@@ -300,10 +311,19 @@ pub fn run(cli: Cli) -> Result<()> {
             project,
             workers,
             partition,
+            skip_baseline,
             output,
             forge_args,
         } => {
-            cmd_test(manifest, project, workers, partition, output, &forge_args)?;
+            cmd_test(
+                manifest,
+                project,
+                workers,
+                partition,
+                skip_baseline,
+                output,
+                &forge_args,
+            )?;
         }
         Commands::ReportCmd {
             manifest,
@@ -349,7 +369,7 @@ fn resolve_targets(
                     contracts: tc.contracts.clone().unwrap_or_default(),
                     functions: tc.functions.clone().unwrap_or_default(),
                     exclude_functions: tc.exclude_functions.clone().unwrap_or_default(),
-                    forge_args: tc.forge_args.clone().unwrap_or_default(),
+                    test_commands: tc.test_commands.clone().unwrap_or_default(),
                     ..FileTarget::new(file)
                 });
             }
@@ -402,11 +422,22 @@ fn resolve_glob_patterns(patterns: &[String], project_root: &Path) -> Result<Vec
     Ok(files)
 }
 
+fn forge_args_to_test_commands(forge_args: &[String]) -> Vec<TestCommand> {
+    if forge_args.is_empty() {
+        vec![]
+    } else {
+        vec![TestCommand::Foundry {
+            args: forge_args.to_vec(),
+        }]
+    }
+}
+
 fn paths_to_targets(files: Vec<PathBuf>, forge_args: &[String]) -> Vec<FileTarget> {
+    let test_commands = forge_args_to_test_commands(forge_args);
     files
         .into_iter()
         .map(|file| FileTarget {
-            forge_args: forge_args.to_vec(),
+            test_commands: test_commands.clone(),
             ..FileTarget::new(file)
         })
         .collect()
@@ -506,10 +537,45 @@ fn generate_mutants(
     };
 
     let generator = GambitGenerator::new();
-    eprintln!("Generating mutants...");
+    let file_count = config.targets.len();
+    eprintln!(
+        "Generating mutants for {} {}...",
+        file_count,
+        if file_count == 1 { "file" } else { "files" }
+    );
+    for target in &config.targets {
+        let has_contracts = !target.contracts.is_empty();
+        let has_functions = !target.functions.is_empty();
+        let has_exclude = !target.exclude_functions.is_empty();
+        if has_contracts || has_functions || has_exclude {
+            let mut parts = Vec::new();
+            if has_contracts {
+                parts.push(format!("contracts: {:?}", target.contracts));
+            }
+            if has_functions {
+                parts.push(format!("functions: {:?}", target.functions));
+            }
+            if has_exclude {
+                parts.push(format!("exclude_functions: {:?}", target.exclude_functions));
+            }
+            eprintln!("  {} ({})", target.file.display(), parts.join(", "));
+        }
+    }
     let mutants = generator
         .generate(&config)
         .context("failed to generate mutants")?;
+
+    if mutants.is_empty() {
+        eprintln!("Generated 0 mutants");
+        eprintln!("  Target files:");
+        for target in &config.targets {
+            eprintln!("    {}", target.file.display());
+        }
+        if !config.operators.is_empty() {
+            eprintln!("  Operators: {:?}", config.operators);
+        }
+        eprintln!("  Check that target files, contracts, and functions match the source code");
+    }
 
     Ok(mutants)
 }
@@ -572,58 +638,97 @@ fn run_mutants_parallel(
     Ok(results)
 }
 
-fn baseline_forge_arg_sets(
+fn baseline_test_command_sets(
     dregs_config: Option<&DregsConfig>,
     cli_forge_args: &[String],
-) -> Vec<Vec<String>> {
+) -> Vec<Vec<TestCommand>> {
     let Some(config) = dregs_config else {
-        return vec![cli_forge_args.to_vec()];
+        return vec![forge_args_to_test_commands(cli_forge_args)];
     };
     let mut seen = std::collections::HashSet::new();
     let mut result = Vec::new();
     for target in &config.targets {
-        let args = target.forge_args.clone().unwrap_or_default();
-        if seen.insert(args.clone()) {
-            result.push(args);
+        let cmds = target.test_commands.clone().unwrap_or_default();
+        if seen.insert(cmds.clone()) {
+            result.push(cmds);
         }
     }
     result
 }
 
-fn unique_forge_args_from_mutants(mutants: &[Mutant]) -> Vec<Vec<String>> {
+fn unique_test_commands_from_mutants(mutants: &[Mutant]) -> Vec<Vec<TestCommand>> {
     let mut seen = std::collections::HashSet::new();
     let mut result = Vec::new();
     for mutant in mutants {
-        if seen.insert(mutant.forge_args.clone()) {
-            result.push(mutant.forge_args.clone());
+        if seen.insert(mutant.test_commands.clone()) {
+            result.push(mutant.test_commands.clone());
         }
     }
     result
 }
 
-fn run_baseline_tests(project_root: &Path, forge_args: &[String]) -> Result<()> {
-    if !forge_args.is_empty() {
-        let test_names =
-            list_forge_tests(project_root, forge_args).context("failed to list matching tests")?;
-        if test_names.is_empty() {
-            anyhow::bail!("no tests matched the provided filters");
-        }
-        eprintln!("Matched {} tests:", test_names.len());
-        for name in &test_names {
-            eprintln!("  {}", name);
+fn run_baseline_tests(project_root: &Path, test_commands: &[TestCommand]) -> Result<()> {
+    // List matching tests first (runs against real project, fast)
+    for cmd in test_commands {
+        if let TestCommand::Foundry { args } = cmd
+            && !args.is_empty()
+        {
+            let test_names =
+                list_forge_tests(project_root, args).context("failed to list matching tests")?;
+            if test_names.is_empty() {
+                anyhow::bail!("no tests matched the provided filters");
+            }
+            eprintln!("Matched {} tests:", test_names.len());
+            for name in &test_names {
+                eprintln!("  {}", name);
+            }
         }
     }
 
-    eprintln!("Running baseline tests...");
-    let baseline_start = Instant::now();
-    if let Err(e) = run_forge_test_baseline(project_root, forge_args) {
-        eprintln!("{}", e);
-        anyhow::bail!("baseline tests failed - fix tests before running mutation testing");
+    // Run baseline in a temp workspace (same environment as mutant tests)
+    let symlinks = crate::runner::collect_symlinks(test_commands);
+    let workspace =
+        Workspace::new(project_root, &symlinks).context("failed to create baseline workspace")?;
+    eprintln!("Baseline workspace: {}", workspace.path().display());
+
+    let cmds: Vec<_> = if test_commands.is_empty() {
+        vec![TestCommand::Foundry { args: vec![] }]
+    } else {
+        test_commands.to_vec()
+    };
+
+    for cmd in &cmds {
+        match cmd {
+            TestCommand::Foundry { args } => {
+                eprintln!("Running baseline tests...");
+                let baseline_start = Instant::now();
+                if let Err(e) = run_forge_test_baseline(workspace.path(), args) {
+                    eprintln!("{}", e);
+                    anyhow::bail!(
+                        "baseline tests failed - fix tests before running mutation testing"
+                    );
+                }
+                eprintln!(
+                    "Baseline tests passed ({:.1}s)",
+                    baseline_start.elapsed().as_secs_f64()
+                );
+            }
+            TestCommand::Custom { command, .. } => {
+                eprintln!("Running baseline custom test...");
+                let baseline_start = Instant::now();
+                if let Err(e) = run_custom_test_baseline(workspace.path(), command) {
+                    eprintln!("{}", e);
+                    anyhow::bail!(
+                        "baseline custom test failed - fix tests before running mutation testing"
+                    );
+                }
+                eprintln!(
+                    "Baseline custom test passed ({:.1}s)",
+                    baseline_start.elapsed().as_secs_f64()
+                );
+            }
+        }
     }
-    eprintln!(
-        "Baseline tests passed ({:.1}s)",
-        baseline_start.elapsed().as_secs_f64()
-    );
 
     Ok(())
 }
@@ -637,6 +742,7 @@ fn run_mutation_testing(
     fail_under: Option<f64>,
     mutations: Vec<String>,
     skip_validate: bool,
+    skip_baseline: bool,
     workers: usize,
     diff_base: Option<String>,
     diff_file: Option<PathBuf>,
@@ -652,9 +758,7 @@ fn run_mutation_testing(
         );
     }
     let foundry_config = foundry_config.map(|mut fc| {
-        if fc.remappings.is_empty() {
-            fc.remappings = resolve_remappings(&project_root);
-        }
+        fc.remappings = resolve_remappings(&project_root);
         fc
     });
 
@@ -666,9 +770,11 @@ fn run_mutation_testing(
         eprintln!("Using dregs.toml: {}", dregs_path.display());
     }
 
-    let baseline_arg_sets = baseline_forge_arg_sets(dregs_config.as_ref(), forge_args);
-    for args in &baseline_arg_sets {
-        run_baseline_tests(&project_root, args)?;
+    if !skip_baseline {
+        let baseline_cmd_sets = baseline_test_command_sets(dregs_config.as_ref(), forge_args);
+        for cmds in &baseline_cmd_sets {
+            run_baseline_tests(&project_root, cmds)?;
+        }
     }
 
     let targets = resolve_targets(dregs_config, files, forge_args, &project_root)?;
@@ -756,9 +862,7 @@ fn cmd_generate(
         );
     }
     let foundry_config = foundry_config.map(|mut fc| {
-        if fc.remappings.is_empty() {
-            fc.remappings = resolve_remappings(&project_root);
-        }
+        fc.remappings = resolve_remappings(&project_root);
         fc
     });
 
@@ -812,6 +916,7 @@ fn cmd_test(
     project: PathBuf,
     workers: usize,
     partition: Option<String>,
+    skip_baseline: bool,
     output: Option<PathBuf>,
     forge_args: &[String],
 ) -> Result<()> {
@@ -819,13 +924,15 @@ fn cmd_test(
 
     let manifest = Manifest::read(&manifest_path).context("failed to read manifest")?;
 
-    let baseline_arg_sets = if forge_args.is_empty() {
-        unique_forge_args_from_mutants(&manifest.mutants)
-    } else {
-        vec![forge_args.to_vec()]
-    };
-    for args in &baseline_arg_sets {
-        run_baseline_tests(&project_root, args)?;
+    if !skip_baseline {
+        let baseline_cmd_sets = if forge_args.is_empty() {
+            unique_test_commands_from_mutants(&manifest.mutants)
+        } else {
+            vec![forge_args_to_test_commands(forge_args)]
+        };
+        for cmds in &baseline_cmd_sets {
+            run_baseline_tests(&project_root, cmds)?;
+        }
     }
 
     let mutants_to_test: Vec<&Mutant> = if let Some(partition_str) = &partition {
@@ -856,7 +963,7 @@ fn cmd_test(
         .cloned()
         .map(|mut m| {
             if !forge_args.is_empty() {
-                m.forge_args = forge_args.to_vec();
+                m.test_commands = forge_args_to_test_commands(forge_args);
             }
             m
         })
@@ -984,7 +1091,7 @@ fn cmd_inspect(
                 run_mutant(mutant, &project_root)
             } else {
                 let mut owned = (*mutant).clone();
-                owned.forge_args = forge_args.to_vec();
+                owned.test_commands = forge_args_to_test_commands(forge_args);
                 run_mutant(&owned, &project_root)
             }
             .with_context(|| format!("failed to test mutant {}", mutant.id))?;
@@ -1182,7 +1289,7 @@ mod tests {
 
     #[test]
     fn test_resolve_targets_from_dregs_config() {
-        use crate::config::{DregsConfig, TargetConfig};
+        use crate::config::{DregsConfig, TargetConfig, TestCommand};
         use assert_fs::prelude::*;
 
         let temp = assert_fs::TempDir::new().unwrap();
@@ -1194,17 +1301,21 @@ mod tests {
                 contracts: Some(vec!["Token".to_string()]),
                 functions: None,
                 exclude_functions: None,
-                forge_args: Some(vec![
-                    "--match-contract".to_string(),
-                    "TokenTest".to_string(),
-                ]),
+                test_commands: Some(vec![TestCommand::Foundry {
+                    args: vec!["--match-contract".to_string(), "TokenTest".to_string()],
+                }]),
             }],
         };
 
         let targets = resolve_targets(Some(config), vec![], &[], temp.path()).unwrap();
         assert_eq!(targets.len(), 1);
         assert_eq!(targets[0].contracts, vec!["Token"]);
-        assert_eq!(targets[0].forge_args, vec!["--match-contract", "TokenTest"]);
+        assert_eq!(
+            targets[0].test_commands,
+            vec![TestCommand::Foundry {
+                args: vec!["--match-contract".to_string(), "TokenTest".to_string()]
+            }]
+        );
     }
 
     #[test]
@@ -1218,7 +1329,7 @@ mod tests {
                 contracts: None,
                 functions: None,
                 exclude_functions: None,
-                forge_args: None,
+                test_commands: None,
             }],
         };
 
@@ -1248,7 +1359,7 @@ mod tests {
                 contracts: None,
                 functions: None,
                 exclude_functions: None,
-                forge_args: None,
+                test_commands: None,
             }],
         };
 
@@ -1283,7 +1394,7 @@ mod tests {
                 contracts: None,
                 functions: None,
                 exclude_functions: None,
-                forge_args: None,
+                test_commands: None,
             }],
         };
 
@@ -1302,7 +1413,7 @@ mod tests {
                 contracts: None,
                 functions: None,
                 exclude_functions: None,
-                forge_args: None,
+                test_commands: None,
             }],
         };
 
@@ -1327,7 +1438,7 @@ mod tests {
                 contracts: None,
                 functions: None,
                 exclude_functions: None,
-                forge_args: None,
+                test_commands: None,
             }],
         };
 
@@ -1390,7 +1501,12 @@ mod tests {
         )
         .unwrap();
         assert_eq!(targets.len(), 1);
-        assert_eq!(targets[0].forge_args, vec!["--match-test", "foo"]);
+        assert_eq!(
+            targets[0].test_commands,
+            vec![TestCommand::Foundry {
+                args: vec!["--match-test".to_string(), "foo".to_string()]
+            }]
+        );
     }
 
     #[test]
@@ -1499,7 +1615,7 @@ diff --git a/src/Counter.sol b/src/Counter.sol
             original: "a".to_string(),
             replacement: "b".to_string(),
             line: 10,
-            forge_args: vec![],
+            test_commands: vec![],
         }];
         let result = apply_diff_mutant_filter(mutants, None);
         assert_eq!(result.len(), 1);
@@ -1517,7 +1633,7 @@ diff --git a/src/Counter.sol b/src/Counter.sol
                 original: "a".to_string(),
                 replacement: "b".to_string(),
                 line: 10,
-                forge_args: vec![],
+                test_commands: vec![],
             },
             Mutant {
                 id: 2,
@@ -1528,7 +1644,7 @@ diff --git a/src/Counter.sol b/src/Counter.sol
                 original: "a".to_string(),
                 replacement: "b".to_string(),
                 line: 50,
-                forge_args: vec![],
+                test_commands: vec![],
             },
         ];
         let ranges = Some(vec![DiffRange {
@@ -1551,7 +1667,7 @@ diff --git a/src/Counter.sol b/src/Counter.sol
             original: "a".to_string(),
             replacement: "b".to_string(),
             line: 50,
-            forge_args: vec![],
+            test_commands: vec![],
         }];
         let ranges = Some(vec![DiffRange {
             file: PathBuf::from("src/A.sol"),
@@ -1562,78 +1678,94 @@ diff --git a/src/Counter.sol b/src/Counter.sol
     }
 
     #[test]
-    fn test_baseline_forge_arg_sets_no_config() {
+    fn test_baseline_test_command_sets_no_config() {
         let args = vec!["--match-test".to_string(), "Foo".to_string()];
-        let result = baseline_forge_arg_sets(None, &args);
-        assert_eq!(result, vec![args]);
-    }
-
-    #[test]
-    fn test_baseline_forge_arg_sets_no_config_empty() {
-        let result = baseline_forge_arg_sets(None, &[]);
-        assert_eq!(result, vec![Vec::<String>::new()]);
-    }
-
-    #[test]
-    fn test_baseline_forge_arg_sets_from_dregs_config() {
-        use crate::config::{DregsConfig, TargetConfig};
-
-        let config = DregsConfig {
-            targets: vec![
-                TargetConfig {
-                    files: vec!["src/A.sol".to_string()],
-                    contracts: None,
-                    functions: None,
-                    exclude_functions: None,
-                    forge_args: Some(vec!["--match-contract".to_string(), "ATest".to_string()]),
-                },
-                TargetConfig {
-                    files: vec!["src/B.sol".to_string()],
-                    contracts: None,
-                    functions: None,
-                    exclude_functions: None,
-                    forge_args: Some(vec!["--match-contract".to_string(), "BTest".to_string()]),
-                },
-            ],
-        };
-
-        let result = baseline_forge_arg_sets(Some(&config), &[]);
-        assert_eq!(result.len(), 2);
-        assert_eq!(result[0], vec!["--match-contract", "ATest"]);
-        assert_eq!(result[1], vec!["--match-contract", "BTest"]);
-    }
-
-    #[test]
-    fn test_baseline_forge_arg_sets_deduplicates() {
-        use crate::config::{DregsConfig, TargetConfig};
-
-        let args = vec!["--match-contract".to_string(), "ATest".to_string()];
-        let config = DregsConfig {
-            targets: vec![
-                TargetConfig {
-                    files: vec!["src/A.sol".to_string()],
-                    contracts: None,
-                    functions: None,
-                    exclude_functions: None,
-                    forge_args: Some(args.clone()),
-                },
-                TargetConfig {
-                    files: vec!["src/B.sol".to_string()],
-                    contracts: None,
-                    functions: None,
-                    exclude_functions: None,
-                    forge_args: Some(args),
-                },
-            ],
-        };
-
-        let result = baseline_forge_arg_sets(Some(&config), &[]);
+        let result = baseline_test_command_sets(None, &args);
         assert_eq!(result.len(), 1);
-        assert_eq!(result[0], vec!["--match-contract", "ATest"]);
+        assert_eq!(result[0], vec![TestCommand::Foundry { args: args.clone() }]);
     }
 
     #[test]
-    fn test_baseline_forge_arg_sets_none_treated_as_empty() {
+    fn test_baseline_test_command_sets_no_config_empty() {
+        let result = baseline_test_command_sets(None, &[]);
+        assert_eq!(result, vec![Vec::<TestCommand>::new()]);
+    }
+
+    #[test]
+    fn test_baseline_test_command_sets_from_dregs_config() {
+        use crate::config::{DregsConfig, TargetConfig};
+
+        let config = DregsConfig {
+            targets: vec![
+                TargetConfig {
+                    files: vec!["src/A.sol".to_string()],
+                    contracts: None,
+                    functions: None,
+                    exclude_functions: None,
+                    test_commands: Some(vec![TestCommand::Foundry {
+                        args: vec!["--match-contract".to_string(), "ATest".to_string()],
+                    }]),
+                },
+                TargetConfig {
+                    files: vec!["src/B.sol".to_string()],
+                    contracts: None,
+                    functions: None,
+                    exclude_functions: None,
+                    test_commands: Some(vec![TestCommand::Foundry {
+                        args: vec!["--match-contract".to_string(), "BTest".to_string()],
+                    }]),
+                },
+            ],
+        };
+
+        let result = baseline_test_command_sets(Some(&config), &[]);
+        assert_eq!(result.len(), 2);
+        assert_eq!(
+            result[0],
+            vec![TestCommand::Foundry {
+                args: vec!["--match-contract".to_string(), "ATest".to_string()]
+            }]
+        );
+        assert_eq!(
+            result[1],
+            vec![TestCommand::Foundry {
+                args: vec!["--match-contract".to_string(), "BTest".to_string()]
+            }]
+        );
+    }
+
+    #[test]
+    fn test_baseline_test_command_sets_deduplicates() {
+        use crate::config::{DregsConfig, TargetConfig};
+
+        let cmds = vec![TestCommand::Foundry {
+            args: vec!["--match-contract".to_string(), "ATest".to_string()],
+        }];
+        let config = DregsConfig {
+            targets: vec![
+                TargetConfig {
+                    files: vec!["src/A.sol".to_string()],
+                    contracts: None,
+                    functions: None,
+                    exclude_functions: None,
+                    test_commands: Some(cmds.clone()),
+                },
+                TargetConfig {
+                    files: vec!["src/B.sol".to_string()],
+                    contracts: None,
+                    functions: None,
+                    exclude_functions: None,
+                    test_commands: Some(cmds),
+                },
+            ],
+        };
+
+        let result = baseline_test_command_sets(Some(&config), &[]);
+        assert_eq!(result.len(), 1);
+    }
+
+    #[test]
+    fn test_baseline_test_command_sets_none_treated_as_empty() {
         use crate::config::{DregsConfig, TargetConfig};
 
         let config = DregsConfig {
@@ -1642,16 +1774,22 @@ diff --git a/src/Counter.sol b/src/Counter.sol
                 contracts: None,
                 functions: None,
                 exclude_functions: None,
-                forge_args: None,
+                test_commands: None,
             }],
         };
 
-        let result = baseline_forge_arg_sets(Some(&config), &[]);
-        assert_eq!(result, vec![Vec::<String>::new()]);
+        let result = baseline_test_command_sets(Some(&config), &[]);
+        assert_eq!(result, vec![Vec::<TestCommand>::new()]);
     }
 
     #[test]
-    fn test_unique_forge_args_from_mutants() {
+    fn test_unique_test_commands_from_mutants() {
+        let cmds_a = vec![TestCommand::Foundry {
+            args: vec!["--match-contract".to_string(), "ATest".to_string()],
+        }];
+        let cmds_b = vec![TestCommand::Foundry {
+            args: vec!["--match-contract".to_string(), "BTest".to_string()],
+        }];
         let mutants = vec![
             Mutant {
                 id: 1,
@@ -1662,7 +1800,7 @@ diff --git a/src/Counter.sol b/src/Counter.sol
                 original: "a".to_string(),
                 replacement: "b".to_string(),
                 line: 1,
-                forge_args: vec!["--match-contract".to_string(), "ATest".to_string()],
+                test_commands: cmds_a.clone(),
             },
             Mutant {
                 id: 2,
@@ -1673,7 +1811,7 @@ diff --git a/src/Counter.sol b/src/Counter.sol
                 original: "a".to_string(),
                 replacement: "b".to_string(),
                 line: 1,
-                forge_args: vec!["--match-contract".to_string(), "BTest".to_string()],
+                test_commands: cmds_b,
             },
             Mutant {
                 id: 3,
@@ -1684,14 +1822,12 @@ diff --git a/src/Counter.sol b/src/Counter.sol
                 original: "a".to_string(),
                 replacement: "b".to_string(),
                 line: 1,
-                forge_args: vec!["--match-contract".to_string(), "ATest".to_string()],
+                test_commands: cmds_a,
             },
         ];
 
-        let result = unique_forge_args_from_mutants(&mutants);
+        let result = unique_test_commands_from_mutants(&mutants);
         assert_eq!(result.len(), 2);
-        assert_eq!(result[0], vec!["--match-contract", "ATest"]);
-        assert_eq!(result[1], vec!["--match-contract", "BTest"]);
     }
 
     #[test]
@@ -1746,7 +1882,7 @@ diff --git a/src/Counter.sol b/src/Counter.sol
     }
 
     #[test]
-    fn test_unique_forge_args_from_mutants_empty_args() {
+    fn test_unique_test_commands_from_mutants_empty() {
         let mutants = vec![Mutant {
             id: 1,
             source_path: PathBuf::from("src/A.sol"),
@@ -1756,10 +1892,10 @@ diff --git a/src/Counter.sol b/src/Counter.sol
             original: "a".to_string(),
             replacement: "b".to_string(),
             line: 1,
-            forge_args: vec![],
+            test_commands: vec![],
         }];
 
-        let result = unique_forge_args_from_mutants(&mutants);
-        assert_eq!(result, vec![Vec::<String>::new()]);
+        let result = unique_test_commands_from_mutants(&mutants);
+        assert_eq!(result, vec![Vec::<TestCommand>::new()]);
     }
 }

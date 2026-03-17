@@ -1,4 +1,4 @@
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fs;
 use std::path::Path;
@@ -37,7 +37,6 @@ struct ProfileConfig {
     optimizer: Option<bool>,
     evm_version: Option<String>,
     via_ir: Option<bool>,
-    remappings: Option<Vec<String>>,
 }
 
 pub(crate) fn parse_foundry_toml(project_root: &Path) -> Result<Option<FoundryConfig>> {
@@ -59,7 +58,7 @@ pub(crate) fn parse_foundry_toml(project_root: &Path) -> Result<Option<FoundryCo
         optimizer: profile.optimizer.unwrap_or(false),
         evm_version: profile.evm_version,
         via_ir: profile.via_ir.unwrap_or(false),
-        remappings: profile.remappings.unwrap_or_default(),
+        remappings: vec![],
     }))
 }
 
@@ -83,6 +82,20 @@ pub(crate) fn resolve_remappings(project_root: &Path) -> Vec<String> {
     }
 }
 
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq, Hash)]
+#[serde(tag = "kind", rename_all = "lowercase")]
+pub(crate) enum TestCommand {
+    Foundry {
+        #[serde(default)]
+        args: Vec<String>,
+    },
+    Custom {
+        command: Vec<String>,
+        #[serde(default)]
+        symlinks: Vec<String>,
+    },
+}
+
 #[derive(Debug, Clone, Deserialize)]
 pub(crate) struct DregsConfig {
     #[serde(rename = "target")]
@@ -95,7 +108,7 @@ pub(crate) struct TargetConfig {
     pub(crate) contracts: Option<Vec<String>>,
     pub(crate) functions: Option<Vec<String>>,
     pub(crate) exclude_functions: Option<Vec<String>>,
-    pub(crate) forge_args: Option<Vec<String>>,
+    pub(crate) test_commands: Option<Vec<TestCommand>>,
 }
 
 pub(crate) fn parse_dregs_toml(
@@ -135,6 +148,37 @@ pub(crate) fn parse_dregs_toml(
                 "target {} has both functions and exclude_functions (mutually exclusive)",
                 i + 1
             )));
+        }
+        if let Some(cmds) = &t.test_commands {
+            for (j, cmd) in cmds.iter().enumerate() {
+                if let TestCommand::Custom { command, symlinks } = cmd {
+                    if command.is_empty() {
+                        return Err(ConfigError::DregsConfig(format!(
+                            "target {} test_commands[{}]: custom command must have a non-empty command",
+                            i + 1,
+                            j
+                        )));
+                    }
+                    for (k, s) in symlinks.iter().enumerate() {
+                        if s.is_empty() {
+                            return Err(ConfigError::DregsConfig(format!(
+                                "target {} test_commands[{}]: symlinks[{}] must not be empty",
+                                i + 1,
+                                j,
+                                k
+                            )));
+                        }
+                        if s.contains('/') || s.contains('\\') {
+                            return Err(ConfigError::DregsConfig(format!(
+                                "target {} test_commands[{}]: symlinks[{}] must be a top-level directory name, not a path",
+                                i + 1,
+                                j,
+                                k
+                            )));
+                        }
+                    }
+                }
+            }
         }
     }
 
@@ -203,7 +247,10 @@ remappings = ["@openzeppelin/=lib/openzeppelin/"]
         assert!(config.optimizer);
         assert_eq!(config.evm_version, Some("cancun".to_string()));
         assert!(config.via_ir);
-        assert_eq!(config.remappings, vec!["@openzeppelin/=lib/openzeppelin/"]);
+        assert!(
+            config.remappings.is_empty(),
+            "remappings are resolved via forge remappings, not foundry.toml"
+        );
     }
 
     #[test]
@@ -322,7 +369,10 @@ optimizer = true
 files = ["src/A.sol"]
 contracts = ["A"]
 functions = ["transfer"]
-forge_args = ["--match-contract", "ATest"]
+
+[[target.test_commands]]
+kind = "foundry"
+args = ["--match-contract", "ATest"]
 
 [[target]]
 files = ["src/B.sol", "src/C.sol"]
@@ -338,15 +388,17 @@ files = ["src/B.sol", "src/C.sol"]
         assert_eq!(t0.contracts, Some(vec!["A".to_string()]));
         assert_eq!(t0.functions, Some(vec!["transfer".to_string()]));
         assert_eq!(
-            t0.forge_args,
-            Some(vec!["--match-contract".to_string(), "ATest".to_string()])
+            t0.test_commands,
+            Some(vec![TestCommand::Foundry {
+                args: vec!["--match-contract".to_string(), "ATest".to_string()]
+            }])
         );
 
         let t1 = &config.targets[1];
         assert_eq!(t1.files, vec!["src/B.sol", "src/C.sol"]);
         assert!(t1.contracts.is_none());
         assert!(t1.functions.is_none());
-        assert!(t1.forge_args.is_none());
+        assert!(t1.test_commands.is_none());
     }
 
     #[test]
@@ -398,7 +450,7 @@ files = ["src/**/*.sol"]
         assert_eq!(config.targets[0].files, vec!["src/**/*.sol"]);
         assert!(config.targets[0].contracts.is_none());
         assert!(config.targets[0].functions.is_none());
-        assert!(config.targets[0].forge_args.is_none());
+        assert!(config.targets[0].test_commands.is_none());
     }
 
     #[test]
@@ -458,6 +510,122 @@ exclude_functions = ["transfer", "approve"]
             Some(vec!["transfer".to_string(), "approve".to_string()])
         );
         assert!(config.targets[0].functions.is_none());
+    }
+
+    #[test]
+    fn test_parse_dregs_toml_empty_custom_command() {
+        let temp = TempDir::new().unwrap();
+        temp.child("dregs.toml")
+            .write_str(
+                r#"
+[[target]]
+files = ["src/A.sol"]
+
+[[target.test_commands]]
+kind = "custom"
+command = []
+"#,
+            )
+            .unwrap();
+
+        let result = parse_dregs_toml(temp.path(), None);
+        assert!(result.is_err());
+        let err = result.unwrap_err().to_string();
+        assert!(
+            err.contains("non-empty command"),
+            "error should mention non-empty command: {err}"
+        );
+    }
+
+    #[test]
+    fn test_parse_dregs_toml_test_commands_ok() {
+        let temp = TempDir::new().unwrap();
+        temp.child("dregs.toml")
+            .write_str(
+                r#"
+[[target]]
+files = ["src/A.sol"]
+
+[[target.test_commands]]
+kind = "foundry"
+args = ["--match-contract", "ATest"]
+
+[[target.test_commands]]
+kind = "custom"
+command = ["make", "test"]
+symlinks = ["node_modules", ".yarn"]
+"#,
+            )
+            .unwrap();
+
+        let config = parse_dregs_toml(temp.path(), None).unwrap().unwrap();
+        let cmds = config.targets[0].test_commands.as_ref().unwrap();
+        assert_eq!(cmds.len(), 2);
+        assert_eq!(
+            cmds[0],
+            TestCommand::Foundry {
+                args: vec!["--match-contract".to_string(), "ATest".to_string()]
+            }
+        );
+        assert_eq!(
+            cmds[1],
+            TestCommand::Custom {
+                command: vec!["make".to_string(), "test".to_string()],
+                symlinks: vec!["node_modules".to_string(), ".yarn".to_string()],
+            }
+        );
+    }
+
+    #[test]
+    fn test_parse_dregs_toml_empty_symlink_entry() {
+        let temp = TempDir::new().unwrap();
+        temp.child("dregs.toml")
+            .write_str(
+                r#"
+[[target]]
+files = ["src/A.sol"]
+
+[[target.test_commands]]
+kind = "custom"
+command = ["make", "test"]
+symlinks = ["node_modules", ""]
+"#,
+            )
+            .unwrap();
+
+        let result = parse_dregs_toml(temp.path(), None);
+        assert!(result.is_err());
+        let err = result.unwrap_err().to_string();
+        assert!(
+            err.contains("symlinks[1] must not be empty"),
+            "error should mention empty symlink: {err}"
+        );
+    }
+
+    #[test]
+    fn test_parse_dregs_toml_symlink_path_fails() {
+        let temp = TempDir::new().unwrap();
+        temp.child("dregs.toml")
+            .write_str(
+                r#"
+[[target]]
+files = ["src/A.sol"]
+
+[[target.test_commands]]
+kind = "custom"
+command = ["make", "test"]
+symlinks = ["src/vendor"]
+"#,
+            )
+            .unwrap();
+
+        let result = parse_dregs_toml(temp.path(), None);
+        assert!(result.is_err());
+        let err = result.unwrap_err().to_string();
+        assert!(
+            err.contains("top-level directory name"),
+            "error should reject paths: {err}"
+        );
     }
 
     #[test]
