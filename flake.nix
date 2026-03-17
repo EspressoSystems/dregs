@@ -165,6 +165,16 @@
         }
       );
 
+      overlays.default = final: prev: {
+        dregs = self.packages.${prev.stdenv.hostPlatform.system}.default;
+        dregs-unwrapped = self.packages.${prev.stdenv.hostPlatform.system}.unwrapped;
+      };
+
+      templates.default = {
+        path = ./templates/default;
+        description = "Dev shell with dregs, foundry, and solc";
+      };
+
       apps = forAllSystems (system: {
         default = {
           type = "app";
