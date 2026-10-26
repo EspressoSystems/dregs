@@ -147,6 +147,7 @@
             preCheck = ''
               export HOME=$(mktemp -d)
               export FOUNDRY_SOLC=${pkgs.solc-bin."0.8.30"}/bin/solc
+              export FOUNDRY_OFFLINE=true
             '';
           });
 
