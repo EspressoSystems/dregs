@@ -51,7 +51,7 @@
                 enable = true;
                 name = "coverage";
                 entry =
-                  if pkgs.stdenv.isDarwin
+                  if pkgs.stdenv.hostPlatform.isDarwin
                   then "echo 'WARNING: cargo-llvm-cov skipped on Darwin (package broken)'"
                   else "${pkgs.just}/bin/just cov-check";
                 types_or = [ "rust" "toml" ];
@@ -102,11 +102,12 @@
               pkgs.just
               pkgs.solc-bin."0.8.30"
               pkgs.typos
-              pkgs.nodePackages.prettier
+              pkgs.prettier
               pkgs.nixpkgs-fmt
               pkgs.python3
-            ] ++ pkgs.lib.optionals (!pkgs.stdenv.isDarwin) [
-              pkgs.cargo-llvm-cov
+            ] ++ pkgs.lib.optionals (!pkgs.stdenv.hostPlatform.isDarwin) [
+              # upstream tests fail against nixpkgs llvm; dregs uses the toolchain llvm-tools
+              (pkgs.cargo-llvm-cov.overrideAttrs { doCheck = false; })
             ];
             RUST_BACKTRACE = 1;
           };
@@ -147,6 +148,7 @@
             preCheck = ''
               export HOME=$(mktemp -d)
               export FOUNDRY_SOLC=${pkgs.solc-bin."0.8.30"}/bin/solc
+              export FOUNDRY_OFFLINE=true
             '';
           });
 
