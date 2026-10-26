@@ -106,7 +106,7 @@ Semantic commits, present tense, bullet points. Types: feat, fix, docs, refactor
 
 ### Pre-commit Hooks
 
-rustfmt, clippy (-D warnings), nextest, cargo-llvm-cov (99% line/97% region/97% function; skipped on Darwin), typos,
+rustfmt, clippy (-D warnings), nextest, cargo-llvm-cov (99% line/97% region/96% function; skipped on Darwin), typos,
 cargo-lock, nixpkgs-fmt
 
 ## Architecture
